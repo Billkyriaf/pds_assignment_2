@@ -24,7 +24,7 @@ int main(int argc, char **argv) {
     int pointsDimension;  // The dimension of the space for the points (number of coordinates)
 
     // Read from the file
-    readFromFile(argv[1], points, world_rank, world_size, &pointsDimension, &pointsPerProcess);
+    readFromFile(argv[1], &points, world_rank, world_size, &pointsDimension, &pointsPerProcess);
 
 
     MPI_Request mpiRequest;
@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
 
     if (world_rank == 0) {
         for (int i = 0; i < pointsPerProcess; ++i) {
-            printf("Rank: %d, Point %d coordinates: ",world_rank, i);
+            printf("Rank: %d, Point %d, Coordinates: ",world_rank, i);
             for (int j = 0; j < pointsDimension; ++j) {
                 printf("%f ", points[i].coordinates[j]);
             }
@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
         }
     } else {
         for (int i = 0; i < pointsPerProcess; ++i) {
-            printf("Rank: %d, Point %d coordinates: ",world_rank, i);
+            printf("Rank: %d, Point %d, Coordinates: ",world_rank, i);
             for (int j = 0; j < pointsDimension; ++j) {
                 printf("%f ", points[i].coordinates[j]);
             }

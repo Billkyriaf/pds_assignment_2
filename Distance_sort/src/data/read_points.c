@@ -16,8 +16,7 @@
  * @param pointsPerProcess The number of points each process has to manage
  *
  */
-void readFromFile(char *fileName, Point *pointsArr, int rank, int worldSize, int *pointsDimension, int *pointsPerProcess){
-
+void readFromFile(char *fileName, Point **pointsArr, int rank, int worldSize, int *pointsDimension, int *pointsPerProcess){
     FILE *file = NULL;  // File pointer
     file = fopen(fileName, "r");  // Open the file for reading
 
@@ -26,6 +25,7 @@ void readFromFile(char *fileName, Point *pointsArr, int rank, int worldSize, int
         // If not write error to the logger and exit
         // TODO add to log file
         return;
+
     } else {
         int totalPoints;
         char *line = NULL;
@@ -43,9 +43,10 @@ void readFromFile(char *fileName, Point *pointsArr, int rank, int worldSize, int
         // Calculate the number of points per process
         *pointsPerProcess = totalPoints / worldSize;
 
+        // printf("Dimension: %d, Points per process: %d\n", *pointsDimension, *pointsPerProcess);
 
         // Allocate memory for the points array
-        pointsArr = (Point *) malloc (*pointsPerProcess * (sizeof (Point)));
+        *pointsArr = (Point *) malloc (*pointsPerProcess * (sizeof (Point)));
 
         // Skip the first rank * numberOfPoints lines
         for (int i = 0; i < rank * (*pointsPerProcess); ++i) {
@@ -57,9 +58,9 @@ void readFromFile(char *fileName, Point *pointsArr, int rank, int worldSize, int
 
             // Read the next line from the file
             read = getline(&line, &len, file);
-
+                        
             // Allocate memory for the coordinates array
-            pointsArr[i].coordinates = (float *) malloc(*pointsDimension * sizeof (float));
+            (*pointsArr)[i].coordinates = (float *) malloc (*pointsDimension * sizeof (float));
 
             if (read != -1){
                 // Points to the first char of the line initially
@@ -70,10 +71,9 @@ void readFromFile(char *fileName, Point *pointsArr, int rank, int worldSize, int
 
                     // If the first character of the string is digit or sign
                     if ( isdigit(*p) || ( (*p=='-'||*p=='+') && isdigit(*(p+1)) )) {
-
                         // Insert the coordinates to the array
                         // strtof() reads the hole number and points p to the next non digit char in the string
-                        pointsArr[i].coordinates[j] = strtof(p, &p);
+                        (*pointsArr)[i].coordinates[j] = strtof(p, &p);
 
                     } else {
                         // If *p is a non digit char...
