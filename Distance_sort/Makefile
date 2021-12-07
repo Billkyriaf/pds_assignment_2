@@ -5,9 +5,13 @@ BUILD_DIR := ./build
 SRC_DIR := ./src
 
 # Colors
-GREEN = \033[1;32m
-RED = \033[1;31m
-NC = \033[0m
+#GREEN = \033[1;32m
+#RED = \033[1;31m
+#NC = \033[0m
+
+GREEN =
+RED =
+NC =
 
 # Directories
 LIBRARIES_SRC := $(shell find $(SRC_DIR)/data $(SRC_DIR)/logs -name '*.c')
@@ -23,6 +27,7 @@ INC_DIRS := $(shell find $(SRC_DIR) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 CFLAGS := $(INC_FLAGS) -O3
+MPI_FLAGS := --mca opal_warn_on_missing_libcuda 0 -hostfile hostfile
 
 
 all: build_mpi  # pre_build build_mpi post_build
@@ -41,7 +46,7 @@ $(BUILD_DIR)/%.c.o: %.c
 
 run_mpi: build_mpi
 ifneq ("$(wildcard $(data_file))","")
-	@mpirun -hostfile hostfile $(BUILD_DIR)/mpi_main.out $(data_file)
+	@mpirun $(MPI_FLAGS) $(BUILD_DIR)/mpi_main.out $(data_file)
 else
 	@echo "$(RED)Missing data_file={argument} or file does not exist$(NC)"
 	@echo "Run with 'make data_file=path/to/file run_mpi'"
