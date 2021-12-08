@@ -16,9 +16,9 @@
  * @param pointsPerProcess The number of points each process has to manage
  *
  */
-void readFromFile(char *fileName, Point **pointsArr, int rank, int worldSize, int *pointsDimension, int *pointsPerProcess){
+void readFromFile(char *fileName, Point **pointsArr, int rank, int worldSize, int64_t *pointsDimension, int64_t *pointsPerProcess){
     FILE *file = NULL;  // File pointer
-    file = fopen(fileName, "r");  // Open the file for reading
+    file = fopen(fileName, "rb");  // Open the file for reading
 
     // Check if the file is open
     if (file == NULL){
@@ -27,31 +27,28 @@ void readFromFile(char *fileName, Point **pointsArr, int rank, int worldSize, in
         return;
 
     } else {
-        int totalPoints;
+        int64_t totalPoints;
+
         char *line = NULL;
         size_t len = 0;
         ssize_t read;
 
-        // Parse initial info for the file (dimension, number of points)
-        getline(&line, &len, file);
-        totalPoints = (int) strtol(line, NULL, 10);
-
-        getline(&line, &len, file);
-        *pointsDimension = (int) strtol(line, NULL, 10);
-
+        // Read the dimension and the number of points
+        fread(pointsDimension, sizeof(int64_t), 1, file);
+        fread(&totalPoints, sizeof(int64_t), 1, file);
 
         // Calculate the number of points per process
         *pointsPerProcess = totalPoints / worldSize;
 
-        // printf("Dimension: %d, Points per process: %d\n", *pointsDimension, *pointsPerProcess);
+        // printf("Dimension: %ld, Points per process: %ld\n", *pointsDimension, *pointsPerProcess);
 
         // Allocate memory for the points array
         *pointsArr = (Point *) malloc (*pointsPerProcess * (sizeof (Point)));
 
         // Skip the first rank * numberOfPoints lines
-        for (int i = 0; i < rank * (*pointsPerProcess); ++i) {
-            getline(&line, &len, file);
-        }
+        fseek(file, rank * *pointsDimension * *pointsPerProcess * sizeof (double ), SEEK_CUR);
+
+        //FIXME bellow here is shit
 
         // Start reading the next numberOfPoints lines
         for (int i = 0; i < *pointsPerProcess; ++i) {

@@ -3,7 +3,7 @@
 
 typedef struct point{
     float *coordinates;
-    float distance;
+    double distance;
 } Point;
 
 float findDistance(Point *pivot, Point *target, int dimension);

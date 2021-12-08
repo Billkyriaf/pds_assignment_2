@@ -1,5 +1,5 @@
 MPICC = mpicc
-
+CC = gcc
 
 BUILD_DIR := ./build
 SRC_DIR := ./src
@@ -29,10 +29,6 @@ INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 CFLAGS := $(INC_FLAGS) -O3
 MPI_FLAGS := --mca opal_warn_on_missing_libcuda 0 -hostfile hostfile
 
-
-all: build_mpi  # pre_build build_mpi post_build
-
-
 build_mpi: $(MPI_SRC) $(LIBRARIES_SRC)
 	@echo "$(GREEN)Building MPI binary...$(NC)"
 	@$(MPICC) $(CFLAGS) -o $(BUILD_DIR)/mpi_main.out $(MPI_SRC) $(LIBRARIES_SRC)
@@ -44,7 +40,7 @@ $(BUILD_DIR)/%.c.o: %.c
 	@mkdir -p $(dir $@)
 	@$(MPICC) $(CFLAGS) -c $< -o $@
 
-run_mpi: build_mpi
+run_mpi:
 ifneq ("$(wildcard $(data_file))","")
 	@mpirun $(MPI_FLAGS) $(BUILD_DIR)/mpi_main.out $(data_file)
 else
@@ -55,5 +51,5 @@ endif
 .PHONY: clean
 clean:
 	@echo "$(RED)Clearing build directory...$(NC)"
-	@rm -rf $(BUILD_DIR)
+	@rm -rf $(BUILD_DIR)/*
 	@echo "$(GREEN)Done!$(NC)"
