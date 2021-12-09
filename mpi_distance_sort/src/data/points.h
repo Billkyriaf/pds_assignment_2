@@ -2,10 +2,11 @@
 #define DISTANCE_SORT_POINTS_H
 
 typedef struct point{
-    float *coordinates;
+    double *coordinates;
     double distance;
 } Point;
 
-float findDistance(Point *pivot, Point *target, int dimension);
+double findDistance(Point *pivot, Point *target, int dimension);
+double findMedianValue(double *distanceVector, int numberOfPoints);
 
 #endif
