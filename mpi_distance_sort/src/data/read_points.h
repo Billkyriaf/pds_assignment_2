@@ -3,7 +3,7 @@
 
 #include "points.h"
 
-void readFromFile(char *fileName, Point **pointsArr, int rank, int worldSize, int64_t *pointsDimension, int64_t *pointsPerProcess);
+Point *readFromFile(char *fileName, int rank, int worldSize, int *pointsDimension, int *pointsPerProcess);
 
 
 #endif
