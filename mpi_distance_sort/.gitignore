@@ -37,7 +37,7 @@
 **/*.cbp
 **/CMakeScripts
 **/compile_commands.json
-
+**/.idea
 **/CMakeLists.txt
 
 **/build
