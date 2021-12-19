@@ -14,7 +14,7 @@ RED =
 NC =
 
 # Directories
-LIBRARIES_SRC := $(shell find $(SRC_DIR)/data $(SRC_DIR)/logs -name '*.c')
+LIBRARIES_SRC := $(shell find $(SRC_DIR)/data $(SRC_DIR)/logs $(SRC_DIR)/processes -name '*.c')
 LIBRARIES_SRC := $(LIBRARIES_SRC:%=$(BUILD_DIR)/%.o)
 
 MPI_SRC := $(SRC_DIR)/main.c

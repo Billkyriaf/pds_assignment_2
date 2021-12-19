@@ -121,7 +121,7 @@ void MedianUtil(double *distVector, int start, int end, int k, double *a, double
 }
 
 /**
- * Finds the median value of the vector using quick select algorith
+ * Finds the median value of the vector using quick select algorithm. The distance vector is rearranged!!
  * @param distanceVector The vector of all the distances
  * @param numberOfPoints The size of the vector
  * @return The median value
