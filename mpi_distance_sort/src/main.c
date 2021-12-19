@@ -9,35 +9,98 @@
 #include "main.h"
 
 
+/**
+ * Function that test the results of the program. The test is simple it calculates the distance and compares it to the
+ * current median if the value is not correct it prints the error message.
+ *
+ * @param info The info struct of the process
+ * @param min_rank  The minimum rank of the processes team
+ * @param max_rank  The maximum rank of the processes team
+ */
+void testResult(Info *info, int min_rank, int max_rank){
+    // Memory allocation for the distance vector
+    double *distVector = (double*) malloc(info->pointsPerProcess * sizeof (double));
+
+
+    // Start calculating the distances from the pivot for all the points
+    for (int i = 0; i < info->pointsPerProcess; ++i) {
+        distVector[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
+    }
+
+    if (info->world_rank >= (max_rank - min_rank + 1) / 2){
+        for (int i = 0; i < info->pointsPerProcess; ++i) {
+            if (distVector[i] < info->median){
+                printf("Rank %d FAILED the test\n", info->world_rank);
+                return;
+            }
+        }
+
+        printf("Rank %d PASS\n", info->world_rank);
+
+    } else {
+        for (int i = 0; i < info->pointsPerProcess; ++i) {
+            if (distVector[i] > info->median){
+                printf("Rank %d FAILED the test\nMedian was: %.10f and distance was: %.10f\n", info->world_rank, info->median, distVector[i]);
+                return;
+            }
+        }
+
+        printf("Rank %d PASS\n", info->world_rank);
+    }
+
+    free(distVector);
+}
+
+/**
+ * This is the main function that starts the shorting process. This function is call recursively until all the processes
+ * have the correct points
+ * @param master_rank The rank of the master process for this call
+ * @param min_rank This smallest rank among the processes of the group. The initial group of processes contains every
+ *                 process and it is gradually split to two, four, eight etc. parts with every call of the function
+ * @param max_rank This is the biggest rank among the processes of the group
+ * @param info The info struct of the current process
+ * @param communicator The MPI communicator object. Initially it is MPI_COMM_WORLD
+ */
 void sort_points(int master_rank, int min_rank, int max_rank, Info *info, MPI_Comm communicator){
-    // Recursion finish statement
+    // Recursion finish statement.
+    // The recursion stops if the function is called with only one process in the processes group
     if (min_rank - max_rank == 0){
         return;
     }
 
+
+    // The master of every group calls the master function. Everyone else calls the slave function.
     if  (info->world_rank == master_rank){
         masterProcess(master_rank, min_rank, max_rank, info, communicator);
     } else {
         slaveProcess(master_rank, min_rank, max_rank, info, communicator);
     }
 
-
+    // Function that tests the results for a given group of processes
+    testResult(info, min_rank, max_rank);
 
     // TODO call the function recursively with new masters for half of the processes
 }
 
+
+/**
+ * The main function of the program
+ * @param argc The number of the cmd arguments
+ * @param argv The cmd arguments. The function takes only one argument the path to the binary data file.
+ * @return
+ */
 int main(int argc, char **argv) {
 
     // check for the command line arguments
     if (argc != 2){
-        printf("Wrong number of arguments exiting...\n");
+        printf("Illegal number of arguments. The function takes one argument: The path to the binary data file. Exiting...\n");
         return -1;
     }
 
     // Initialize the MPI communication
     MPI_Init(&argc, &argv);
 
-    Info info;
+    Info info;  // The info struct holds useful information for every process that need to remain between function calls
 
     // Get the number of processes
     MPI_Comm_size(MPI_COMM_WORLD, &info.world_size);
