@@ -71,11 +71,11 @@ void sort_points(int master_rank, int min_rank, int max_rank, Info *info, MPI_Co
     }
 
     // Function that tests the results for a given group of processes
-    testResult(info, min_rank, max_rank);
+//    testResult(info, min_rank, max_rank);
 
     // Recursion finish statement.
     // The recursion stops if the function is called with only one process in the processes group
-    if (min_rank - max_rank == 1){
+    if (max_rank - min_rank == 1){
         return;
     }
 
@@ -93,9 +93,9 @@ void sort_points(int master_rank, int min_rank, int max_rank, Info *info, MPI_Co
         // Get the rank of the process
         MPI_Comm_rank(upperComm, &info->world_rank);
 
-        printf("New Rank %d from %d upperComm\n", info->world_rank + 1, info->world_size);
+//        printf("New Rank %d from %d upperComm. Old rank %d\n", info->world_rank, info->world_size, old_rank);
 
-        sort_points(0, 0, info->world_rank - 1, info, upperComm);
+        sort_points(0, 0, info->world_size - 1, info, upperComm);
 
     } else {
         MPI_Comm lowerComm;  // The half bottom ranks will go here
@@ -108,9 +108,9 @@ void sort_points(int master_rank, int min_rank, int max_rank, Info *info, MPI_Co
         // Get the rank of the process
         MPI_Comm_rank(lowerComm, &info->world_rank);
 
-        printf("New Rank %d from %d lowerComm\n", info->world_rank + 1, info->world_size);
+//        printf("New Rank %d from %d lowerComm. Old rank %d\n", info->world_rank, info->world_size, old_rank);
 
-        sort_points(0, 0, info->world_rank - 1, info, lowerComm);
+        sort_points(0, 0, info->world_size - 1, info, lowerComm);
     }
 }
 
@@ -139,6 +139,8 @@ int main(int argc, char **argv) {
 
     // Get the rank of the process
     MPI_Comm_rank(MPI_COMM_WORLD, &info.world_rank);
+
+    info.initial_rank = info.world_rank;  // Just for debugging
 
     // Read data from the binary file
     info.points = readFromFile(

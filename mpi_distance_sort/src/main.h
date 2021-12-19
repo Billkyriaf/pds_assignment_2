@@ -1,6 +1,7 @@
 #ifndef MPI_DISTANCE_SORT_MAIN_H
 #define MPI_DISTANCE_SORT_MAIN_H
 
+#include "data/points.h"
 /**
  * This structure passes constant information between the recursive call of the sort_points function, that the arguments
  * of the function are kept as few as possible for simplicity
@@ -8,6 +9,8 @@
 typedef struct info{
     int world_size;  // The size of the world (number of processes)
     int world_rank;  // The rank of the current process
+    int initial_rank;
+
 
     double median;  // The median value used for testing
 
