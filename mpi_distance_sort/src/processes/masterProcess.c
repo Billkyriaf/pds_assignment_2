@@ -53,46 +53,50 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
     }
 
 
-    printf("\n\nRank: %d distance: ", info->world_rank);
-    for (int i = 0; i < info->pointsPerProcess; ++i) {
-        printf("%f, ", distVector[i]);
-    }
+
+//    printf("\n\nRank: %d distance: ", info->world_rank);
+//    for (int i = 0; i < info->pointsPerProcess; ++i) {
+//        printf("%f, ", distVector[i]);
+//    }
 
 
-    // Wait for all the points to be received
+
+    // Wait for all the distances to be received
     for (int i = 0; i < max_rank - min_rank; ++i) {
         MPI_Wait(requests + i, MPI_STATUS_IGNORE);
     }
 
+
+
     // Debug prints
-    printf("\n\nPivot: ");
-    for (int i = 0; i < info->pointsDimension; ++i) {
-        printf("%f ", info->pivot.coordinates[i]);
-    }
-    printf("\n");
-    printf("\n");
+//    printf("\n\nPivot: ");
+//    for (int i = 0; i < info->pointsDimension; ++i) {
+//        printf("%f ", info->pivot.coordinates[i]);
+//    }
+//    printf("\n");
+//    printf("\n");
 
-    for (int i = 0; i <= max_rank; ++i) {
-        printf("Distance table Rank %d: ", i);
-        for (int j = 0; j < info->pointsPerProcess; ++j) {
-            printf("%f ", distVector[i * info->pointsPerProcess + j]);
-        }
-        printf("\n");
-    }
+//    for (int i = 0; i <= max_rank; ++i) {
+//        printf("Distance table Rank %d: ", i);
+//        for (int j = 0; j < info->pointsPerProcess; ++j) {
+//            printf("%f ", distVector[i * info->pointsPerProcess + j]);
+//        }
+//        printf("\n");
+//    }
 
-    // Create a copy of the dist vector because find median value rearranges the vector
-    double *tmpDistVector = (double*) malloc(info->pointsPerProcess * (max_rank - min_rank + 1) * sizeof (double*));
 
-    for (int i = 0; i < info->pointsPerProcess * (max_rank - min_rank + 1); ++i) {
-        tmpDistVector[i] = distVector[i];
-    }
 
-    // Calculate the median value and send it back to the other processes
-    double median = findMedianValue(tmpDistVector, info->pointsPerProcess * info->world_size);
-    printf("\n\nMedian: %f\n", median);
+    // Calculate the median value and send it back to the other processes of the group
+    double median = findMedianValue(distVector, info->pointsPerProcess * info->world_size);
+    info->median = median;
 
-    free(tmpDistVector);
 
+
+//    printf("\n\nMedian: %f\n", median);
+
+
+
+    // Broadcast the median to all the processes of the group
     MPI_Bcast(
             &median,
             1,
@@ -307,12 +311,114 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
         }
     }
 
-    for (int k = 0; k <= max_rank - min_rank; ++k) {
-        printf("Rank %d wants to send ", k);
-        for (int l = 1; l <= exchanges[k][0] * 2; l += 2) {
-            printf("Rank %d, %d element(s), ", exchanges[k][l], exchanges[k][l + 1]);
-        }
-        printf("\n");
+
+
+//    printf("\n");
+//    printf("\n");
+//    for (int k = 0; k <= max_rank - min_rank; ++k) {
+//        printf("Rank %d wants to send ", k);
+//        for (int l = 1; l <= exchanges[k][0] * 2; l += 2) {
+//            printf("Rank %d, %d element(s), ", exchanges[k][l], exchanges[k][l + 1]);
+//        }
+//        printf("\n");
+//    }
+
+
+
+    // Clear all the requests
+    free(requests);  // MEMORY free
+
+    // ... and allocate the requests array again for the new requests
+    requests = (MPI_Request *)malloc((max_rank - min_rank) * sizeof (MPI_Request));  // MEMORY
+
+    // Send the solution to all the processes
+    for (int i = 0; i < max_rank - min_rank; ++i) {
+        MPI_Isend(
+                exchanges[i + 1],
+                exchanges[i + 1][0] * 2 + 1,
+                MPI_INT,
+                i + 1,
+                30,
+                communicator,
+                requests + i
+        );
     }
 
+    // Wait for the requests to finish
+    for (int k = 0; k < max_rank - min_rank; ++k) {
+        MPI_Wait(requests + k, MPI_STATUS_IGNORE);
+    }
+
+    // Clear all the requests
+    free(requests); // MEMORY free
+
+    // ... and allocate the requests array again for the new requests
+    requests = (MPI_Request *) malloc(exchanges[0][0] * 2 * sizeof (MPI_Request)); // MEMORY
+
+    // The offset is used to offset the recVector and sendVector so that they both can send and receive
+    // from multiple processes at the same time
+    int offset = 0;
+
+    // Start the points exchange process
+    for (int k = 0; k < exchanges[0][0]; ++k) {
+        // Non-blocking receive of the points
+        MPI_Irecv(
+                recVector + offset,
+                exchanges[0][k * 2 + 2] * info->pointsDimension,
+                MPI_DOUBLE,
+                exchanges[0][k * 2 + 1],
+                40, communicator,
+                requests + 2 * k
+        );
+
+        // Non-blocking send of the points
+        MPI_Isend(
+                sendVector + offset,
+                exchanges[0][k * 2 + 2] * info->pointsDimension,
+                MPI_DOUBLE,
+                exchanges[0][k * 2 + 1],
+                40,
+                communicator,
+                requests + 2 * k + 1
+        );
+
+        // Increment the offset by the number of coordinates written and read
+        offset += exchanges[0][k * 2 + 2] * info->pointsDimension;
+    }
+
+    // Wait for all the requests to complete
+    for (int k = 0; k < exchanges[0][0] * 2; ++k) {
+        MPI_Wait(requests + k, MPI_STATUS_IGNORE);
+    }
+
+    // Permanently store the points received
+    for (int k = indexI; k < info->pointsPerProcess; ++k) {
+        for (int l = 0; l < info->pointsDimension; ++l) {
+            info->points[k].coordinates[l] = recVector[(k - indexI) * info->pointsDimension + l];
+        }
+    }
+
+
+
+//    printf("\n\nRank: %d after\n", info->world_rank);
+//    for (int i = 0; i < info->pointsPerProcess; ++i) {
+//        printf("  Point: %d\n", i);
+//        for (int j = 0; j < info->pointsDimension; ++j) {
+//            printf("    %f ", info->points[i].coordinates[j]);
+//        }
+//        printf("\n");
+//    }
+
+
+
+    // free memory
+    free(distVector);
+    free(requests);
+    free(pointsToSend);
+    free(sendVector);
+    free(recVector);
+    for (int i = 0; i < max_rank - min_rank + 1; ++i) {
+        free(exchanges[i]);
+    }
+    free(exchanges);
 }
