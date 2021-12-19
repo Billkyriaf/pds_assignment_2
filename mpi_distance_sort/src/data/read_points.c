@@ -25,13 +25,14 @@ Point *readFromFile(char *fileName, int rank, int worldSize, int *pointsDimensio
         exit(-1);
 
     } else {
-        int64_t totalPoints;
-        int64_t d;
+        int64_t totalPoints;  // The total number of points
+        int64_t d;  // The dimension of the space
 
         // Read the dimension and the number of points
         fread(&d, sizeof(int64_t), 1, file);
         *pointsDimension = (int)d;
 
+        // Read the total points from the file
         fread(&totalPoints, sizeof(int64_t), 1, file);
 
         // Calculate the number of points per process
@@ -42,7 +43,8 @@ Point *readFromFile(char *fileName, int rank, int worldSize, int *pointsDimensio
         // Allocate memory for the points array
         Point *pointsArr = (Point *) malloc (*pointsPerProcess * (sizeof (Point)));
 
-        // Skip the first rank * numberOfPoints lines
+        // Skip the first rank * numberOfPoints lines. This is how every process ends up with different points.
+        // All the process read from the same file, but they all read different sections of the file.
         fseek(file, rank * (*pointsDimension) * (*pointsPerProcess) * (long int)sizeof (double), SEEK_CUR);
 
         // Start reading the next numberOfPoints lines
@@ -51,12 +53,14 @@ Point *readFromFile(char *fileName, int rank, int worldSize, int *pointsDimensio
             // Allocate memory for the coordinates array
             pointsArr[i].coordinates = (double *) malloc (*pointsDimension * sizeof (double));
 
+            // Read the coordinates fread function can read multiple numbers at a time and stores them to an array
             fread(pointsArr[i].coordinates, sizeof(double), *pointsDimension, file);
         }
 
         // Close the file
         fclose(file);
 
+        // Return the reference to the points array
         return pointsArr;
     }
 }

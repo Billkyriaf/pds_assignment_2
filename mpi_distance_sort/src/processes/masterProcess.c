@@ -6,23 +6,26 @@
 
 void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_Comm communicator){
     // Allocate space for the distances from all the other processes
-    double *distVector = (double*) malloc(info->pointsPerProcess * (max_rank - min_rank + 1) * sizeof (double*));
+    double *distVector = (double*) malloc(info->pointsPerProcess * (max_rank - min_rank + 1) * sizeof (double*));  // MEMORY
 
-    // Allocate space for all the requests
+    // Allocate space for all the requests objects
     MPI_Request *requests;
-    requests = (MPI_Request *) malloc((max_rank - min_rank) * sizeof (MPI_Request));
+    requests = (MPI_Request *) malloc((max_rank - min_rank) * sizeof (MPI_Request));  // MEMORY
 
 
-    printf("Rank: %d\n", info->world_rank);
-    for (int i = 0; i < info->pointsPerProcess; ++i) {
-        printf("  Point: %d\n", i);
 
-        for (int j = 0; j < info->pointsDimension; ++j) {
-            printf("    %f ", info->points[i].coordinates[j]);
-        }
+//    printf("\n\nRank: %d\n", info->world_rank);
+//    for (int i = 0; i < info->pointsPerProcess; ++i) {
+//        printf("  Point: %d\n", i);
+//
+//        for (int j = 0; j < info->pointsDimension; ++j) {
+//            printf("    %f ", info->points[i].coordinates[j]);
+//        }
+//
+//        printf("\n");
+//    }
 
-        printf("\n");
-    }
+
 
     // Start receiving the distances from all the processes. The receives start before the calculation of the
     // distances so if some processes finish before the master process the info send can begin
@@ -99,14 +102,14 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
     );
 
     // Clear all the requests
-    free(requests);
+    free(requests);  // MEMORY free
 
     // Allocate new memory for the exchanges array ...
     // This array holds the number of points every process wants to send
-    int *pointsToSend = (int *)malloc((max_rank - min_rank + 1) * sizeof(int));
+    int *pointsToSend = (int *)malloc((max_rank - min_rank + 1) * sizeof(int));  // MEMORY
 
     // ... and the requests array
-    requests = (MPI_Request *)malloc((max_rank - min_rank) * sizeof (MPI_Request));
+    requests = (MPI_Request *)malloc((max_rank - min_rank) * sizeof (MPI_Request));  // MEMORY
 
     // Start receiving the number of points that every process wants to send
     for (int i = 0; i < max_rank - min_rank; ++i) {
@@ -121,46 +124,72 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
         );
     }
 
-    // Rearrange the elements of the info->points array with regard to the distVector with the median value received
+    // Rearrange the elements of the info->points array with regard to the distances with the median value received
     int indexI = 0;
     int indexJ = 0;
 
     // TODO make this run parallel with prefix scan
     while (indexJ < info->pointsPerProcess){
-        if (distVector[indexJ] < median) {
-            // Swap
-            double tmp = distVector[indexJ];
-            distVector[indexJ] = distVector[indexI];
-            distVector[indexI] = tmp;
+        if (info->points[indexJ].distance < median) {
 
-            //TODO rearrange the points too
+            Point pnt = info->points[indexJ];
+            info->points[indexJ] = info->points[indexI];
+            info->points[indexI] = pnt;
+
             indexI++;
         }
         indexJ++;
     }
 
-    printf("\n\nDistance after partition: ");
-    for (int i = 0; i < info->pointsPerProcess * (max_rank - min_rank + 1); ++i) {
-        printf("%f, ", distVector[i]);
-    }
-    printf("\n");
-    printf("\n");
-
-    // This is the number of points the master process wants to pointsToSend
+    // This is the number of points the master process wants to send
     pointsToSend[0] = info->pointsPerProcess - indexI;
 
-    // Wait for all the points to be received
+
+
+//    printf("\n\nDistance after partition: ");
+//    for (int i = 0; i < info->pointsPerProcess * (max_rank - min_rank + 1); ++i) {
+//        printf("%f, ", distVector[i]);
+//    }
+//    printf("\n");
+//    printf("\n");
+
+
+
+    // Create a "send" and a "receive" buffer. Those buffers may seem like a waist of memory but in reality they are the
+    // reason that the "send" and "receive" process can happen simultaneously
+
+    // Stores temporarily the points that need to be sent
+    double *sendVector = (double *) malloc(pointsToSend[0] * info->pointsDimension * sizeof(double));  // MEMORY
+
+    // Stores temporarily the points that are received until they are permanently stored
+    double *recVector = (double *) malloc(pointsToSend[0] * info->pointsDimension * sizeof(double));  // MEMORY
+
+    // Because this is the master process and the master process will always be a bottom process the points that the
+    // process needs to send will always be on the right after the rearrangement above
+    for (int k = indexI; k < indexI + pointsToSend[0]; ++k) {
+
+        // Copy all the coordinates to the sendVector
+        for (int l = 0; l < info->pointsDimension; ++l) {
+            sendVector[(k - indexI) * info->pointsDimension + l] = info->points[k].coordinates[l];
+        }
+    }
+
+    // From this point and forward the number of points that every process wants to exchange is needed so we wait
     for (int k = 0; k < max_rank - min_rank; ++k) {
         MPI_Wait(requests + k, MPI_STATUS_IGNORE);
     }
 
-    for (int i = 0; i < max_rank - min_rank + 1; ++i) {
-        printf("Process %d wants to send %d points\n", i, pointsToSend[i]);
-    }
-    printf("\n");
-    printf("\n");
 
-    // Solve he exchanges
+
+//    for (int i = 0; i < max_rank - min_rank + 1; ++i) {
+//        printf("Process %d wants to send %d points\n", i, pointsToSend[i]);
+//    }
+//    printf("\n");
+//    printf("\n");
+
+
+
+    // Solve he exchanges problem
 
     /* This array holds the exchanges for every process the information is stored as follows:
      *
@@ -179,9 +208,9 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
      * Note that it is not mandatory for every process to pointsToSend points with all the other processes. This is actually
      * something to avoid. This is why the exchanges[i][0] shows the number of exchanges for every process.
      */
-    int **exchanges = (int**)malloc((max_rank - min_rank + 1) * sizeof (int *));
+    int **exchanges = (int**)malloc((max_rank - min_rank + 1) * sizeof (int *));  // MEMORY
     for (int k = 0; k <= max_rank - min_rank; ++k) {
-        exchanges[k] = (int *)calloc((max_rank - min_rank) * 2 + 1, sizeof (int));
+        exchanges[k] = (int *)calloc((max_rank - min_rank) * 2 + 1, sizeof (int));  // MEMORY
     }
 
     /* The pointsToSend vector is split in half and the bottom half wants to send data to the top half and vice versa
@@ -208,7 +237,6 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
     // For the bottom half of the processes...
     for (int k = 0; k < (max_rank - min_rank + 1) / 2; ++k) {
         while(pointsToSend[k] > 0){
-
 
             // There is a chance that the top process doesn't want to take any points, so we skip it
             while (pointsToSend[indexTop] == 0){

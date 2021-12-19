@@ -8,35 +8,40 @@
 
 
 void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_Comm communicator){
-/*
-    printf("Rank: %d\n", rank);
-    for (int i = 0; i < info->pointsPerProcess; ++i) {
-        printf("Point: %d\n", i);
-        for (int j = 0; j < info->pointsDimension; ++j) {
-            printf("  %f ", info->points[i].coordinates[j]);
-        }
-        printf("\n");
-    }
-*/
+
+
+
+//    printf("\n\nRank: %d\n", info->world_rank);
+//    for (int i = 0; i < info->pointsPerProcess; ++i) {
+//        printf("  Point: %d\n", i);
+//        for (int j = 0; j < info->pointsDimension; ++j) {
+//            printf("    %f ", info->points[i].coordinates[j]);
+//        }
+//        printf("\n");
+//    }
+
+
 
     // Memory allocation for the distance vector
-    double *distVector = (double*) malloc(info->pointsPerProcess * sizeof (double));
+    double *distVector = (double*) malloc(info->pointsPerProcess * sizeof (double));  // MEMORY
 
 
     // Start calculating the distances from the pivot for all the points
     for (int i = 0; i < info->pointsPerProcess; ++i) {
         distVector[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
-        info->points->distance = distVector[i];
+        info->points[i].distance = distVector[i];
     }
 
-    /*
-    printf("Rank: %d\n", rank);
-    for (int i = 0; i < info->pointsPerProcess; ++i) {
-        printf("Distance: %f  ", distVector[i]);
-    }
-    printf("\n");
-    printf("\n");
-    */
+
+
+//    printf("Rank: %d\n", rank);
+//    for (int indexI = 0; indexI < info->pointsPerProcess; ++indexI) {
+//        printf("Distance: %f  ", distVector[indexI]);
+//    }
+//    printf("\n");
+//    printf("\n");
+
+
 
     // Send all the distances to the master process
     MPI_Send(

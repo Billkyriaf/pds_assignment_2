@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
     // Get the rank of the process
     MPI_Comm_rank(MPI_COMM_WORLD, &info.world_rank);
 
-    // Read from the file
+    // Read data from the binary file
     info.points = readFromFile(
             argv[1],
             info.world_rank,
@@ -61,14 +61,16 @@ int main(int argc, char **argv) {
 
     // If this is the master process...
     if (info.world_rank == 0) {
-        // ...pick a pivot point from the points owned if this is the master process
+        // ...pick a pivot point from the points owned.
         Point tmp = info.points[0];
 
-        // Deep copy the tmp to pivot. This is required because the points array will change
+        // Deep copy the tmp to pivot. This is required because the info.points array will change between function calls
+        // but the pivot needs to remain constant
         for (int i = 0; i < info.pointsDimension; ++i) {
             info.pivot.coordinates[i] = tmp.coordinates[i];
         }
 
+        // Update the distance to the pivot
         info.pivot.distance = 0.0;
     }
 
@@ -90,6 +92,14 @@ int main(int argc, char **argv) {
             &info,
             MPI_COMM_WORLD
     );
+
+
+    // Deallocate any allocated memory
+    for (int i = 0; i < info.pointsPerProcess; ++i) {
+        free(info.points[i].coordinates);
+    }
+    free(info.points);
+
 
     // Finalize the MPI environment.
     MPI_Finalize();
