@@ -54,44 +54,45 @@ int main(int argc, char **argv) {
             &info.pointsPerProcess
     );
 
+    // Create the pivot for every process. The pivot remains constant for the execution of the program, so it is only
+    // selected once
+    info.pivot.coordinates = (double *) malloc(info.pointsDimension * sizeof(double));
+
+
+    // If this is the master process...
+    if (info.world_rank == 0) {
+        // ...pick a pivot point from the points owned if this is the master process
+        Point tmp = info.points[0];
+
+        // Deep copy the tmp to pivot. This is required because the points array will change
+        for (int i = 0; i < info.pointsDimension; ++i) {
+            info.pivot.coordinates[i] = tmp.coordinates[i];
+        }
+
+        info.pivot.distance = 0.0;
+    }
+
+    // Broadcast the pivot to all the other processes
+    // Send the coordinates of the pivot point to all the processes
+    MPI_Bcast(
+            info.pivot.coordinates,
+            info.pointsDimension,
+            MPI_DOUBLE,
+            0,
+            MPI_COMM_WORLD
+    );
+
     // Call the function initially with master_rank = 0, rank = world_rank, min_rank = 0, max_rank = world_size - 1
-    sort_points(info.world_rank, 0, 0, info.world_size - 1, &info);
+    sort_points(
+            0,
+            0,
+            info.world_size - 1,
+            &info,
+            MPI_COMM_WORLD
+    );
 
     // Finalize the MPI environment.
     MPI_Finalize();
 
     return 0;
 }
-
-
-//   {
-//        volatile int i = 0;
-//        char hostname[256];
-//        gethostname(hostname, sizeof(hostname));
-//        printf("PID %d on %s ready for attach\n", getpid(), hostname);
-//        fflush(stdout);
-//        while (0 == i)
-//            sleep(5);
-//    }
-
-
-
-//    if (info.world_rank == 0) {
-//        for (int i = 0; i < info.pointsPerProcess; ++i) {
-//            printf("Rank: %d, Point %d, Coordinates: ", info.world_rank, i);
-//            for (int j = 0; j < info.pointsDimension; ++j) {
-//                printf("%f ", info.points[i].coordinates[j]);
-//            }
-//
-//            printf("\n");
-//        }
-//    } else {
-//        for (int i = 0; i < info.pointsPerProcess; ++i) {
-//            printf("Rank: %d, Point %d, Coordinates: ", info.world_rank, i);
-//            for (int j = 0; j < info.pointsDimension; ++j) {
-//                printf("%f ", info.points[i].coordinates[j]);
-//            }
-//
-//            printf("\n");
-//        }
-//    }
