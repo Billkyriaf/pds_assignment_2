@@ -51,6 +51,7 @@ void testResult(Info *info, int min_rank, int max_rank){
     free(distVector);
 }
 
+
 /**
  * This is the main function that starts the shorting process. This function is call recursively until all the processes
  * have the correct points
@@ -62,13 +63,6 @@ void testResult(Info *info, int min_rank, int max_rank){
  * @param communicator The MPI communicator object. Initially it is MPI_COMM_WORLD
  */
 void sort_points(int master_rank, int min_rank, int max_rank, Info *info, MPI_Comm communicator){
-    // Recursion finish statement.
-    // The recursion stops if the function is called with only one process in the processes group
-    if (min_rank - max_rank == 0){
-        return;
-    }
-
-
     // The master of every group calls the master function. Everyone else calls the slave function.
     if  (info->world_rank == master_rank){
         masterProcess(master_rank, min_rank, max_rank, info, communicator);
@@ -79,7 +73,45 @@ void sort_points(int master_rank, int min_rank, int max_rank, Info *info, MPI_Co
     // Function that tests the results for a given group of processes
     testResult(info, min_rank, max_rank);
 
-    // TODO call the function recursively with new masters for half of the processes
+    // Recursion finish statement.
+    // The recursion stops if the function is called with only one process in the processes group
+    if (min_rank - max_rank == 1){
+        return;
+    }
+
+
+    // If the process belongs to the bigger half ...
+    if (info->world_rank >= (max_rank - min_rank + 1) / 2){
+        MPI_Comm upperComm;  // The half bigger ranks will go here
+
+        // Call the split comm function with color
+        MPI_Comm_split(communicator, 1, info->world_rank, &upperComm);
+
+        // Get the number of processes
+        MPI_Comm_size(upperComm, &info->world_size);
+
+        // Get the rank of the process
+        MPI_Comm_rank(upperComm, &info->world_rank);
+
+        printf("New Rank %d from %d upperComm\n", info->world_rank + 1, info->world_size);
+
+        sort_points(0, 0, info->world_rank - 1, info, upperComm);
+
+    } else {
+        MPI_Comm lowerComm;  // The half bottom ranks will go here
+
+        MPI_Comm_split(communicator, 2, info->world_rank, &lowerComm);
+
+        // Get the number of processes
+        MPI_Comm_size(lowerComm, &info->world_size);
+
+        // Get the rank of the process
+        MPI_Comm_rank(lowerComm, &info->world_rank);
+
+        printf("New Rank %d from %d lowerComm\n", info->world_rank + 1, info->world_size);
+
+        sort_points(0, 0, info->world_rank - 1, info, lowerComm);
+    }
 }
 
 
