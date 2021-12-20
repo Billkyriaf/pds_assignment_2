@@ -1,12 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
+#include <unistd.h>
 #include "points.h"
 #include "masterProcess.h"
 
 void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_Comm communicator){
     // Allocate space for the distances from all the other processes
-    double *distVector = (double*) malloc(info->pointsPerProcess * (max_rank - min_rank + 1) * sizeof (double*));  // MEMORY
+    double *distVector = (double*) malloc(info->pointsPerProcess * (max_rank - min_rank + 1) * sizeof (double));  // MEMORY
 
     // Allocate space for all the requests objects
     MPI_Request *requests;
@@ -58,7 +59,7 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
 //    for (int i = 0; i < info->pointsPerProcess; ++i) {
 //        printf("%f, ", distVector[i]);
 //    }
-
+//    printf("\n");
 
 
     // Wait for all the distances to be received
@@ -75,7 +76,7 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
 //    }
 //    printf("\n");
 //    printf("\n");
-
+//
 //    for (int i = 0; i <= max_rank; ++i) {
 //        printf("Distance table Rank %d: ", i);
 //        for (int j = 0; j < info->pointsPerProcess; ++j) {
@@ -212,10 +213,11 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
      * Note that it is not mandatory for every process to pointsToSend points with all the other processes. This is actually
      * something to avoid. This is why the exchanges[i][0] shows the number of exchanges for every process.
      */
-    int **exchanges = (int**)malloc((max_rank - min_rank + 1) * sizeof (int *));  // MEMORY
+    int **exchanges = (int**)calloc((max_rank - min_rank + 1), sizeof (int *));  // MEMORY
     for (int k = 0; k <= max_rank - min_rank; ++k) {
         exchanges[k] = (int *)calloc((max_rank - min_rank) * 2 + 1, sizeof (int));  // MEMORY
     }
+    
 
     /* The pointsToSend vector is split in half and the bottom half wants to send data to the top half and vice versa
      * This means that in an MPI world with 8 processes if the process 0 wants to send to process 4 100 points the
@@ -340,17 +342,18 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
                 i + 1,
                 30,
                 communicator,
-                requests + i
+                &requests[i]
         );
     }
 
     // Wait for the requests to finish
     for (int k = 0; k < max_rank - min_rank; ++k) {
-        MPI_Wait(requests + k, MPI_STATUS_IGNORE);
+        MPI_Wait(&requests[k], MPI_STATUS_IGNORE);
     }
 
     // Clear all the requests
     free(requests); // MEMORY free
+
 
     // ... and allocate the requests array again for the new requests
     requests = (MPI_Request *) malloc(exchanges[0][0] * 2 * sizeof (MPI_Request)); // MEMORY
@@ -386,10 +389,14 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
         offset += exchanges[0][k * 2 + 2] * info->pointsDimension;
     }
 
-    // Wait for all the requests to complete
-    for (int k = 0; k < exchanges[0][0] * 2; ++k) {
-        MPI_Wait(requests + k, MPI_STATUS_IGNORE);
+
+    if (exchanges[0] > 0){
+        // Wait for all the requests to complete
+        for (int k = 0; k < exchanges[0][0] * 2; ++k) {
+            MPI_Wait(requests + k, MPI_STATUS_IGNORE);
+        }
     }
+
 
     // Permanently store the points received
     for (int k = indexI; k < info->pointsPerProcess; ++k) {
@@ -400,9 +407,9 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
 
 
 
-//    printf("\n\nRank: %d after\n", info->world_rank);
+//    printf("\n\nRank: %d after\n", info->initial_rank);
 //    for (int i = 0; i < info->pointsPerProcess; ++i) {
-//        printf("  Point: %d\n", i);
+//        printf("  Point: %d, Distance: %.10f\n", i, info->points[i].distance);
 //        for (int j = 0; j < info->pointsDimension; ++j) {
 //            printf("    %f ", info->points[i].coordinates[j]);
 //        }

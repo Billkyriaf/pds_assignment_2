@@ -21,7 +21,6 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
 //    }
 
 
-
     // Memory allocation for the distance vector
     double *distVector = (double*) malloc(info->pointsPerProcess * sizeof (double));  // MEMORY
 
@@ -34,7 +33,7 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
 
 
 
-//    printf("Rank: %d\n", rank);
+//    printf("Rank: %d\n", info->world_rank);
 //    for (int indexI = 0; indexI < info->pointsPerProcess; ++indexI) {
 //        printf("Distance: %f  ", distVector[indexI]);
 //    }
@@ -224,11 +223,12 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
         offset += exchanges[k * 2 + 2] * info->pointsDimension;
     }
 
-    // Wait for all the requests to complete
-    for (int k = 0; k < exchanges[0] * 2; ++k) {
-        MPI_Wait(requests + k, MPI_STATUS_IGNORE);
+    if (exchanges[0] > 0){
+        // Wait for all the requests to complete
+        for (int k = 0; k < exchanges[0] * 2; ++k) {
+            MPI_Wait(requests + k, MPI_STATUS_IGNORE);
+        }
     }
-
 
     // Update the points array with the new points received
 
@@ -250,15 +250,14 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
 
 
 
-//    printf("\n\nRank: %d after\n", info->world_rank);
+//    printf("\n\nRank: %d after\n", info->initial_rank);
 //    for (int i = 0; i < info->pointsPerProcess; ++i) {
-//        printf("  Point: %d\n", i);
+//        printf("  Point: %d, Distance: %.10f\n", i, info->points[i].distance);
 //        for (int j = 0; j < info->pointsDimension; ++j) {
 //            printf("    %f ", info->points[i].coordinates[j]);
 //        }
 //        printf("\n");
 //    }
-
 
 
     // Free memory
