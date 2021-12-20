@@ -30,22 +30,22 @@ void testResult(Info *info, int min_rank, int max_rank){
     if (info->world_rank >= (max_rank - min_rank + 1) / 2){
         for (int i = 0; i < info->pointsPerProcess; ++i) {
             if (distVector[i] < info->median){
-                printf("Rank %d FAILED the test\n", info->world_rank);
+                printf("Rank %d FAILED the test\n", info->initial_rank);
                 return;
             }
         }
 
-        printf("Rank %d PASS\n", info->world_rank);
+        printf("Rank %d PASS\n", info->initial_rank);
 
     } else {
         for (int i = 0; i < info->pointsPerProcess; ++i) {
             if (distVector[i] > info->median){
-                printf("Rank %d FAILED the test\nMedian was: %.10f and distance was: %.10f\n", info->world_rank, info->median, distVector[i]);
+                printf("Rank %d FAILED the test\nMedian was: %.10f and distance was: %.10f\n", info->initial_rank, info->median, distVector[i]);
                 return;
             }
         }
 
-        printf("Rank %d PASS\n", info->world_rank);
+        printf("Rank %d PASS\n", info->initial_rank);
     }
 
     free(distVector);
@@ -71,7 +71,7 @@ void sort_points(int master_rank, int min_rank, int max_rank, Info *info, MPI_Co
     }
 
     // Function that tests the results for a given group of processes
-//    testResult(info, min_rank, max_rank);
+    testResult(info, min_rank, max_rank);
 
     // Recursion finish statement.
     // The recursion stops if the function is called with only one process in the processes group
@@ -112,6 +112,10 @@ void sort_points(int master_rank, int min_rank, int max_rank, Info *info, MPI_Co
 
         sort_points(0, 0, info->world_size - 1, info, lowerComm);
     }
+
+
+    // FIXME fix the color property to work with more than 4 processes
+    // FIXME terminate the communicators
 }
 
 

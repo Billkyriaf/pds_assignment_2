@@ -26,7 +26,7 @@ INC_DIRS := $(shell find $(SRC_DIR) -type d)
 # Add a prefix to INC_DIRS. So moduleA would become -ImoduleA. GCC understands this -I flag
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
-CFLAGS := $(INC_FLAGS) -O3
+CFLAGS := $(INC_FLAGS) -O3 -g
 MPI_FLAGS := --mca opal_warn_on_missing_libcuda 0 -hostfile hostfile
 
 build_mpi: $(MPI_SRC) $(LIBRARIES_SRC)

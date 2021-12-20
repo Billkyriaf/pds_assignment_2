@@ -217,7 +217,7 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
     for (int k = 0; k <= max_rank - min_rank; ++k) {
         exchanges[k] = (int *)calloc((max_rank - min_rank) * 2 + 1, sizeof (int));  // MEMORY
     }
-    
+
 
     /* The pointsToSend vector is split in half and the bottom half wants to send data to the top half and vice versa
      * This means that in an MPI world with 8 processes if the process 0 wants to send to process 4 100 points the
