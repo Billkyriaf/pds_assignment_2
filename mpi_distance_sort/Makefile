@@ -1,5 +1,5 @@
 MPICC = mpicc
-CC = gcc -std=99
+CC = gcc -std=c99
 
 BUILD_DIR := ./build
 SRC_DIR := ./src
