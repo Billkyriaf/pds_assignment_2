@@ -48,6 +48,19 @@ else
 	@echo "Run with 'make data_file=path/to/file run_mpi'"
 endif
 
+debug_mpi:
+ifneq ("$(wildcard $(data_file))","")
+	@mpirun $(MPI_FLAGS) valgrind $(BUILD_DIR)/mpi_main.out $(data_file)
+else
+	@echo "$(RED)Missing data_file={argument} or file does not exist$(NC)"
+	@echo "Run with 'make data_file=path/to/file run_mpi'"
+endif
+
+create_datafile:
+	@echo "$(GREEN)Creating data file with d=20 n=8388608 path=./datasets/data.bin$(NC)"
+	@$(CC) -o $(BUILD_DIR)/create_sample_points.out $(SRC_DIR)/tools/create_sample_points.c
+	@$(BUILD_DIR)/create_sample_points.out 20 8388608 ./datasets/data.bin
+
 .PHONY: clean
 clean:
 	@echo "$(RED)Clearing build directory...$(NC)"
