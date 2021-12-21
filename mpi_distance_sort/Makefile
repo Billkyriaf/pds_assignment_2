@@ -15,7 +15,7 @@ NC =
 
 # Directories
 LIBRARIES_SRC := $(shell find $(SRC_DIR)/data $(SRC_DIR)/logs $(SRC_DIR)/processes -name '*.c')
-LIBRARIES_SRC := $(LIBRARIES_SRC:%=$(BUILD_DIR)/%.o)
+LIBRARIES_SRC := $(LIBRARIES_SRC:%=$(BUILD_DIR)/%.o) -lpthread
 
 MPI_SRC := $(SRC_DIR)/main.c
 MPI_SRC := $(MPI_SRC:%=$(BUILD_DIR)/%.o)
