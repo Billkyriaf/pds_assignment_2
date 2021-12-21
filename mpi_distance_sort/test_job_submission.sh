@@ -1,10 +1,13 @@
 #!/bin/bash
+#SBATCH --time=01:00:00
 #SBATCH --partition=testing
-#SBATCH --ntasks-per-node=1
-#SBATCH --nodes=4
-#SBATCH --cpus-per-task=4
-#SBATCH --time=1:00
+#SBATCH --nodes=2
+#SBATCH --ntasks-per-node=4
 
-module load gcc/9.2.0 openmpi/3.1.3
+module load gcc openmpi
 
-mpirun --mca opal_warn_on_missing_libcuda 0 -hostfile ./hostfile build/mpi_main.out ./datasets/data.bin
+
+make build_mpi
+
+mpirun -n 2 ./build/mpi_main.out data_file=datasets/bata.bin
+
