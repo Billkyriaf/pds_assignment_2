@@ -1,10 +1,58 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <mpi.h>
-#include <unistd.h>
+#include <pthread.h>
+
 #include "points.h"
 #include "masterProcess.h"
 
+#define THREAD_NUM 4  // The number of threads for the distance calculation
+
+/**
+ * Arguments for the runnable function that calculates the distances in parallel to save time
+ */
+typedef struct pthreadArgsMaster {
+    Info *info;  // Reference to the info struct of the process
+    double *distPtr;  // Reference to the distance vector of the process
+
+    int startIndex;  // The starting index of the distance vector for each thread
+    int endIndex;  // The ending index of the distance vector for each thread
+} PthreadArgsMaster;
+
+/**
+ * The runnable function for parallel computation of he distances
+ * @param args The arguments struct for every thread
+ * @return Nothing
+ */
+void *distanceRunnableMaster(void *args){
+
+    // Type cast the arguments
+    PthreadArgsMaster *arguments = (PthreadArgsMaster *) args;
+
+    // This is the reference to the processes info struct. This variable is only here to make the code more readable.
+    Info *info = (*arguments).info;
+
+    // Start calculating the distances from the pivot for all the points
+    for (int i = (*arguments).startIndex; i <= (*arguments).endIndex; ++i) {
+
+        (*arguments).distPtr[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
+        info->points[i].distance = (*arguments).distPtr[i];
+    }
+
+    pthread_exit(NULL);
+}
+
+/**
+ * This is the function of the master processes. Here the median is calculated and in general all the processes
+ * are coordinated.
+ *
+ * @param master_rank The rank of the master process
+ * @param min_rank The smallest rank
+ * @param max_rank The biggest rank
+ * @param info The info struct of the process
+ * @param communicator The communicator of the processes grouped together
+ */
 void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_Comm communicator){
     // Allocate space for the distances from all the other processes
     double *distVector = (double*) malloc(info->pointsPerProcess * (max_rank - min_rank + 1) * sizeof (double));  // MEMORY
@@ -27,7 +75,6 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
 //    }
 
 
-
     // Start receiving the distances from all the processes. The receives start before the calculation of the
     // distances so if some processes finish before the master process the info send can begin
     for (int i = 0; i < max_rank - min_rank; ++i) {
@@ -44,14 +91,54 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
         );
     }
 
-    // Start calculating the distances from the pivot for all the points
-    for (int i = 0; i < info->pointsPerProcess; ++i) {
-        // The first points per process instances in the distVector are those of the master process
-        distVector[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
+    // How many distances every thread will compute. The number of pointsPerProcess and processes are all powers of 2 so
+    // the division is always an integer and there are no points left unprocessed
+    int blockSize = info->pointsPerProcess / THREAD_NUM;
 
-        // Update the distance for every point
-        info->points[i].distance = distVector[i];
+    // If the points per process are not many it is actually faster to calculate the distances serially
+    if (blockSize <= 128){
+        // Start calculating the distances from the pivot for all the points
+        for (int i = 0; i < info->pointsPerProcess; ++i) {
+            distVector[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
+
+            // Update the distance
+            info->points[i].distance = distVector[i];
+        }
+
+    } else {  // If the block size is big enough we calculate the distances in parallel
+        // Initialize the thread attributes
+        pthread_attr_t pthread_custom_attr;
+        pthread_attr_init(&pthread_custom_attr);
+
+        pthread_t threads[THREAD_NUM];  // All the thread ids
+        PthreadArgsMaster arguments[THREAD_NUM];  // The structs for each thread
+
+        for (int i = 0; i < THREAD_NUM; ++i) {
+
+            // Initialize the arguments for every process
+            arguments[i].info = info;
+            arguments[i].distPtr = distVector;
+            arguments[i].startIndex = blockSize * i;
+            arguments[i].endIndex = blockSize * i + blockSize - 1;
+
+            // Create the threads
+            pthread_create(&threads[i], &pthread_custom_attr, distanceRunnableMaster, (void *) (arguments + i));
+        }
+
+        // Join all the threads. This statement waits for all the threads to finish execution
+        for (int i = 0; i < THREAD_NUM; ++i) {
+            pthread_join(threads[i], NULL);
+        }
     }
+
+//    // Start calculating the distances from the pivot for all the points
+//    for (int i = 0; i < info->pointsPerProcess; ++i) {
+//        // The first points per process instances in the distVector are those of the master process
+//        distVector[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
+//
+//        // Update the distance for every point
+//        info->points[i].distance = distVector[i];
+//    }
 
 
 
@@ -133,7 +220,6 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
     int indexI = 0;
     int indexJ = 0;
 
-    // TODO make this run parallel with prefix scan
     while (indexJ < info->pointsPerProcess){
         if (info->points[indexJ].distance < median) {
 
@@ -172,11 +258,12 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
     // Because this is the master process and the master process will always be a bottom process the points that the
     // process needs to send will always be on the right after the rearrangement above
     for (int k = indexI; k < indexI + pointsToSend[0]; ++k) {
-
         // Copy all the coordinates to the sendVector
-        for (int l = 0; l < info->pointsDimension; ++l) {
-            sendVector[(k - indexI) * info->pointsDimension + l] = info->points[k].coordinates[l];
-        }
+        memcpy(
+                sendVector + (k - indexI) * info->pointsDimension,
+                info->points[k].coordinates,
+                info->pointsDimension * sizeof(double)
+        );
     }
 
     // From this point and forward the number of points that every process wants to exchange is needed so we wait
@@ -385,7 +472,7 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
                 requests + 2 * k + 1
         );
 
-        // Increment the offset by the number of coordinates written and read
+        // Increment the offset by the number of coordinates send and read
         offset += exchanges[0][k * 2 + 2] * info->pointsDimension;
     }
 
