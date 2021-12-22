@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
+#include <limits.h>
 
 #include "data/points.h"
 #include "data/read_points.h"
@@ -10,14 +11,14 @@
 
 
 /**
- * Function that test the results of the program. The test is simple it calculates the distance and compares it to the
- * current median if the value is not correct it prints the error message.
+ * Function that test the intermediate results of the program. The test is simple it calculates the distance and
+ * compares it to the current median if the value is not correct it prints the error message.
  *
  * @param info The info struct of the process
  * @param min_rank  The minimum rank of the processes team
  * @param max_rank  The maximum rank of the processes team
  */
-void testResult(Info *info, int min_rank, int max_rank){
+void testResultIntermediate(Info *info, int min_rank, int max_rank){
     // Memory allocation for the distance vector
     double *distVector = (double*) malloc(info->pointsPerProcess * sizeof (double));
 
@@ -51,6 +52,72 @@ void testResult(Info *info, int min_rank, int max_rank){
     free(distVector);
 }
 
+/**
+ * This function tests the over all results. The method for testing is every process sends its biggest distance to the
+ * next process. If the biggest distance of the ith process is smaller
+ * that the smallest distance of the (i + 1)th process the problem is solved correctly.
+ * @param info The info struct of every process
+ */
+void testOverAllResults(Info *info){
+    // Distance does not need to be an array because we only care for the biggest and smallest distance
+    double distance;
+
+    // The biggest and smallest distance for every process
+    double smallest = INT_MAX;
+    double biggest = INT_MIN;
+
+    // Start calculating the distances from the pivot for all the points
+    for (int i = 0; i < info->pointsPerProcess; ++i) {
+        distance = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
+
+        // At the same time figure out the biggest
+        if (distance > biggest){
+            biggest = distance;
+        }
+
+        // ...and smallest distance
+        if (distance < smallest){
+            smallest = distance;
+        }
+    }
+
+    // If this is the first process it only needs to send the max distance to the next one
+    if (info->initial_rank == 0){
+        MPI_Send(&biggest, 1, MPI_DOUBLE, info->initial_rank + 1, 100, MPI_COMM_WORLD);
+
+    } else if (info->initial_rank == info->initial_size - 1){  // If this is the last process it only needs to receive the max distance of the previous one
+        double prev_max;
+        MPI_Recv(&prev_max, 1, MPI_DOUBLE, info->initial_rank - 1, 100, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+        if (prev_max < smallest){
+            printf("Rank %d PASS\n", info->initial_rank - 1);
+            printf("Rank %d PASS\n", info->initial_rank);
+
+        } else {
+            printf("Rank %d FAIL\n", info->initial_rank);
+        }
+
+    } else {  // Every other process needs to send the max distance to the next process and receive the max distance from the previous
+        MPI_Request request_1;
+        MPI_Request request_2;
+        double prev_max;
+
+        MPI_Irecv(&prev_max, 1, MPI_DOUBLE, info->initial_rank - 1, 100, MPI_COMM_WORLD, &request_1);
+        MPI_Isend(&biggest, 1, MPI_DOUBLE, info->initial_rank + 1, 100, MPI_COMM_WORLD, &request_2);
+
+        MPI_Wait(&request_1, NULL);
+        MPI_Wait(&request_2, NULL);
+
+        if (prev_max < smallest){
+            printf("Rank %d PASS\n", info->initial_rank - 1);
+
+        } else {
+            printf("Rank %d FAIL\n", info->initial_rank - 1);
+        }
+    }
+
+}
+
 
 /**
  * This is the main function that starts the shorting process. This function is call recursively until all the processes
@@ -70,8 +137,8 @@ void sort_points(int master_rank, int min_rank, int max_rank, Info *info, MPI_Co
         slaveProcess(master_rank, min_rank, max_rank, info, communicator);
     }
 
-    // Function that tests the results for a given group of processes
-    testResult(info, min_rank, max_rank);
+    // Test the intermediate results.
+//    testResultIntermediate(info, min_rank, max_rank);
 
     // Recursion finish statement.
     // The recursion stops if the function is called with only one process in the processes group
@@ -113,8 +180,6 @@ void sort_points(int master_rank, int min_rank, int max_rank, Info *info, MPI_Co
         sort_points(0, 0, info->world_size - 1, info, lowerComm);
     }
 
-
-    // FIXME fix the color property to work with more than 4 processes
     // FIXME terminate the communicators
 }
 
@@ -136,6 +201,8 @@ int main(int argc, char **argv) {
     // Initialize the MPI communication
     MPI_Init(&argc, &argv);
 
+    double start, end;  // Time measuring
+
     Info info;  // The info struct holds useful information for every process that need to remain between function calls
 
     // Get the number of processes
@@ -144,7 +211,10 @@ int main(int argc, char **argv) {
     // Get the rank of the process
     MPI_Comm_rank(MPI_COMM_WORLD, &info.world_rank);
 
-    info.initial_rank = info.world_rank;  // Just for debugging
+    // The world size and rank for every process are depended on the communicator. As the communicator changes so do
+    // those values too. The initial rank and size represent the values for each rank in the MPI_COM_WORLD communicator
+    info.initial_rank = info.world_rank;  // Just for testing
+    info.initial_size = info.world_size; // Just for testing
 
     // Read data from the binary file
     info.points = readFromFile(
@@ -154,6 +224,12 @@ int main(int argc, char **argv) {
             &info.pointsDimension,
             &info.pointsPerProcess
     );
+
+    // Time measurement starts after the points are read
+    if (info.initial_rank == 0){
+        start = MPI_Wtime();
+    }
+
 
     // Create the pivot for every process. The pivot remains constant for the execution of the program, so it is only
     // selected once
@@ -194,13 +270,38 @@ int main(int argc, char **argv) {
             MPI_COMM_WORLD
     );
 
+    // Wait here for all the processes to finish before time measurement
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    // Time measurement ends here
+    if (info.initial_rank == 0){
+        end = MPI_Wtime();
+
+        printf("Time for execution: %.6f\n", end - start);
+
+        // Start the timer for testing time
+        start = MPI_Wtime();
+
+        printf("\n\nTest results: \n");
+    }
+
+    // Test the final result
+    testOverAllResults(&info);
+
+    // Wait here for all the processes to finish before time measurement
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    if (info.initial_rank == 0){
+        end = MPI_Wtime();
+
+        printf("Time for Test: %.6f\n", end - start);
+    }
 
     // Deallocate any allocated memory
     for (int i = 0; i < info.pointsPerProcess; ++i) {
         free(info.points[i].coordinates);
     }
     free(info.points);
-
 
     // Finalize the MPI environment.
     MPI_Finalize();
