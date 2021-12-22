@@ -1,15 +1,60 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <mpi.h>
+#include <pthread.h>
 #include "points.h"
 #include "masterProcess.h"
 
 #include "slaveProcess.h"
 
+#define THREAD_NUM 4  // The number of threads for the distance calculation
 
+/**
+ * Arguments for the runnable function that calculates the distances in parallel to save time
+ */
+typedef struct pthreadArgs {
+    Info *info;  // Reference to the info struct of the process
+    double *distPtr;  // Reference to the distance vector of the process
+
+    int startIndex;  // The starting index of the distance vector for each thread
+    int endIndex;  // The ending index of the distance vector for each thread
+} PthreadArgsMaster;
+
+/**
+ * The runnable function for parallel computation of he distances
+ * @param args The arguments struct for every thread
+ * @return Nothing
+ */
+void *distanceRunnable(void *args){
+
+    // Type cast the arguments
+    PthreadArgsMaster *arguments = (PthreadArgsMaster *) args;
+
+    // This is the reference to the processes info struct. This variable is only here to make the code more readable.
+    Info *info = (*arguments).info;
+
+    // Start calculating the distances from the pivot for all the points
+    for (int i = (*arguments).startIndex; i <= (*arguments).endIndex; ++i) {
+
+        (*arguments).distPtr[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
+        info->points[i].distance = (*arguments).distPtr[i];
+    }
+
+    pthread_exit(NULL);
+}
+
+/**
+ * This is the function that all processes, except the master, run. In this function all the computations and
+ * communications with other processes are handled.
+ *
+ * @param master_rank The rank of the master thread for the current communicator
+ * @param min_rank The minimum rank of this communicator
+ * @param max_rank The maximum rank of this communicator
+ * @param info The info struct of the current process
+ * @param communicator The MPI communicator.
+ */
 void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_Comm communicator){
-
-
 
 //    printf("\n\nRank: %d\n", info->world_rank);
 //    for (int i = 0; i < info->pointsPerProcess; ++i) {
@@ -24,11 +69,44 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
     // Memory allocation for the distance vector
     double *distVector = (double*) malloc(info->pointsPerProcess * sizeof (double));  // MEMORY
 
+    // How many distances every thread will compute. The number of pointsPerProcess and processes are all powers of 2 so
+    // the division is always an integer and there are no points left unprocessed
+    int blockSize = info->pointsPerProcess / THREAD_NUM;
 
-    // Start calculating the distances from the pivot for all the points
-    for (int i = 0; i < info->pointsPerProcess; ++i) {
-        distVector[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
-        info->points[i].distance = distVector[i];
+    // If the points per process are not many it is actually faster to calculate the distances serially
+    if (blockSize <= 128){
+        // Start calculating the distances from the pivot for all the points
+        for (int i = 0; i < info->pointsPerProcess; ++i) {
+            distVector[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
+
+            // Update the distance
+            info->points[i].distance = distVector[i];
+        }
+
+    } else {  // If the block size is big enough we calculate the distances in parallel
+        // Initialize the thread attributes
+        pthread_attr_t pthread_custom_attr;
+        pthread_attr_init(&pthread_custom_attr);
+
+        pthread_t threads[THREAD_NUM];  // All the thread ids
+        PthreadArgsMaster arguments[THREAD_NUM];  // The structs for each thread
+
+        for (int i = 0; i < THREAD_NUM; ++i) {
+
+            // Initialize the arguments for every process
+            arguments[i].info = info;
+            arguments[i].distPtr = distVector;
+            arguments[i].startIndex = blockSize * i;
+            arguments[i].endIndex = blockSize * i + blockSize - 1;
+
+            // Create the threads
+            pthread_create(&threads[i], &pthread_custom_attr, distanceRunnable, (void *) (arguments + i));
+        }
+
+        // Join all the threads. This statement waits for all the threads to finish execution
+        for (int i = 0; i < THREAD_NUM; ++i) {
+            pthread_join(threads[i], NULL);
+        }
     }
 
 
@@ -70,7 +148,6 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
     int indexI = 0;
     int indexJ = 0;
 
-    // TODO make this run parallel with prefix scan
     while (indexJ < info->pointsPerProcess){
         if (info->points[indexJ].distance < median) {
 
@@ -111,9 +188,11 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
 
         // Fill the sendVector with te coordinates of the points to send
         for (int k = indexI; k < indexI + pointsToSend; ++k) {
-            for (int l = 0; l < info->pointsDimension; ++l) {
-                sendVector[(k - indexI) * info->pointsDimension + l] = info->points[k].coordinates[l];
-            }
+            memcpy(
+                    sendVector + (k - indexI) * info->pointsDimension,
+                    info->points[k].coordinates,
+                    info->pointsDimension * sizeof(double)
+            );
         }
 
 
@@ -136,6 +215,8 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
 
         // Fill the sendVector with te coordinates of the points to send
         for (int k = 0; k < indexI; ++k) {
+
+
             for (int l = 0; l < info->pointsDimension; ++l) {
                 sendVector[k * info->pointsDimension + l] = info->points[k].coordinates[l];
             }
@@ -143,7 +224,8 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
     }
 
     // There is no need to wait for the "send" above because we enter a "receive" that the master process will initiate
-    // only if the above "send" is completed
+    // only if the above "send" is completed so we can free the request as well
+//    MPI_Request_free(&request);
 
     // Receive the exchanges vector
     MPI_Status status;
