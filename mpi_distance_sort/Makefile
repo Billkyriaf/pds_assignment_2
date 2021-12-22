@@ -15,7 +15,7 @@ NC =
 
 # Directories
 LIBRARIES_SRC := $(shell find $(SRC_DIR)/data $(SRC_DIR)/logs $(SRC_DIR)/processes -name '*.c')
-LIBRARIES_SRC := $(LIBRARIES_SRC:%=$(BUILD_DIR)/%.o) -lpthread
+LIBRARIES_SRC := $(LIBRARIES_SRC:%=$(BUILD_DIR)/%.o)
 
 MPI_SRC := $(SRC_DIR)/main.c
 MPI_SRC := $(MPI_SRC:%=$(BUILD_DIR)/%.o)
@@ -27,11 +27,11 @@ INC_DIRS := $(shell find $(SRC_DIR) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 CFLAGS := $(INC_FLAGS) -O3 -g
-MPI_FLAGS := --mca opal_warn_on_missing_libcuda 0 -hostfile hostfile
+MPI_FLAGS := --mca opal_warn_on_missing_libcuda 0
 
 build_mpi: $(MPI_SRC) $(LIBRARIES_SRC)
 	@echo "$(GREEN)Building MPI binary...$(NC)"
-	@$(MPICC) $(CFLAGS) -o $(BUILD_DIR)/mpi_main.out $(MPI_SRC) $(LIBRARIES_SRC)
+	$(MPICC) $(CFLAGS) -o $(BUILD_DIR)/mpi_main.out $(MPI_SRC) $(LIBRARIES_SRC) -lpthread
 	@echo "$(GREEN)Build finished successfully!$(NC)"
 	@echo
 
