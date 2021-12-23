@@ -1,13 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <mpi.h>
 #include <limits.h>
 
 #include "data/points.h"
+#include "data/structs.h"
 #include "data/read_points.h"
 #include "processes/masterProcess.h"
 #include "processes/slaveProcess.h"
-#include "main.h"
 
 
 /**
@@ -90,11 +91,11 @@ void testOverAllResults(Info *info){
         MPI_Recv(&prev_max, 1, MPI_DOUBLE, info->initial_rank - 1, 100, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
         if (prev_max < smallest){
-            printf("Rank %d PASS\n", info->initial_rank - 1);
-            printf("Rank %d PASS\n", info->initial_rank);
+            printf("        Rank %d PASS\n", info->initial_rank - 1);
+            printf("        Rank %d PASS\n", info->initial_rank);
 
         } else {
-            printf("Rank %d FAIL\n", info->initial_rank);
+            printf("        Rank %d FAIL\n", info->initial_rank);
         }
 
     } else {  // Every other process needs to send the max distance to the next process and receive the max distance from the previous
@@ -109,10 +110,10 @@ void testOverAllResults(Info *info){
         MPI_Wait(&request_2, NULL);
 
         if (prev_max < smallest){
-            printf("Rank %d PASS\n", info->initial_rank - 1);
+            printf("        Rank %d PASS\n", info->initial_rank - 1);
 
         } else {
-            printf("Rank %d FAIL\n", info->initial_rank - 1);
+            printf("        Rank %d FAIL\n", info->initial_rank - 1);
         }
     }
 
@@ -138,11 +139,12 @@ void sort_points(int master_rank, int min_rank, int max_rank, Info *info, MPI_Co
     }
 
     // Test the intermediate results.
-//    testResultIntermediate(info, min_rank, max_rank);
+    //testResultIntermediate(info, min_rank, max_rank);
 
     // Recursion finish statement.
-    // The recursion stops if the function is called with only one process in the processes group
+    // The recursion stops if the function is called with two processes in the processes group
     if (max_rank - min_rank == 1){
+        MPI_Comm_free(&communicator);
         return;
     }
 
@@ -160,8 +162,9 @@ void sort_points(int master_rank, int min_rank, int max_rank, Info *info, MPI_Co
         // Get the rank of the process
         MPI_Comm_rank(upperComm, &info->world_rank);
 
-//        printf("New Rank %d from %d upperComm. Old rank %d\n", info->world_rank, info->world_size, old_rank);
+        //printf("New Rank %d from %d upperComm. Old rank %d\n", info->world_rank, info->world_size, old_rank);
 
+        // Recursive call of the function
         sort_points(0, 0, info->world_size - 1, info, upperComm);
 
     } else {
@@ -175,28 +178,153 @@ void sort_points(int master_rank, int min_rank, int max_rank, Info *info, MPI_Co
         // Get the rank of the process
         MPI_Comm_rank(lowerComm, &info->world_rank);
 
-//        printf("New Rank %d from %d lowerComm. Old rank %d\n", info->world_rank, info->world_size, old_rank);
+        //printf("New Rank %d from %d lowerComm. Old rank %d\n", info->world_rank, info->world_size, old_rank);
 
+        // Recursive call of the function
         sort_points(0, 0, info->world_size - 1, info, lowerComm);
     }
 
-    // FIXME terminate the communicators
+    // Free the communicators
+    if (communicator != MPI_COMM_WORLD){
+        MPI_Comm_free(&communicator);
+    }
+
 }
 
+/**
+ * Checks the Command line arguments and prints the welcome message
+ * @param argc Number of arguments
+ * @param argv Arguments
+ * @param info The info struct of the program
+ */
+void checkArguments(int argc, char **argv, Info info){
+    // Help message
+    if (argc == 2 && strcmp(argv[1], "help") == 0){
+        if (info.initial_rank == 0){
+            printf(" __          __    _                                _           __  __  _____  _____   _    _        _        \n");
+            printf(" \\ \\        / /   | |                              | |         |  \\/  ||  __ \\|_   _| | |  | |      | |       \n");
+            printf("  \\ \\  /\\  / /___ | |  ___  ___   _ __ ___    ___  | |_  ___   | \\  / || |__) | | |   | |__| |  ___ | | _ __  \n");
+            printf("   \\ \\/  \\/ // _ \\| | / __|/ _ \\ | '_ ` _ \\  / _ \\ | __|/ _ \\  | |\\/| ||  ___/  | |   |  __  | / _ \\| || '_ \\ \n");
+            printf("    \\  /\\  /|  __/| || (__| (_) || | | | | ||  __/ | |_| (_) | | |  | || |     _| |_  | |  | ||  __/| || |_) |\n");
+            printf("     \\/  \\/  \\___||_| \\___|\\___/ |_| |_| |_| \\___|  \\__|\\___/  |_|  |_||_|    |_____| |_|  |_| \\___||_|| .__/ \n");
+            printf("                                                                                                       | |    \n");
+            printf("                                                                                                       |_|    \n");
+
+            printf("USAGE:\n\n");
+            printf("    make run_mpi ./path/to/data [option]\n\n");
+            printf("    Options:\n");
+            printf("        v: Verbose. Print welcome message and other information\n");
+            printf("        nv: Non verbose. Print only required information\n");
+            printf("        help: Display help message\n\n\n");
+            MPI_Finalize();
+            exit(0);
+
+        } else {
+            MPI_Finalize();
+            exit(0);
+        }
+    }
+
+    if (argc != 3){
+        // Error message wrong number of arguments
+        if (info.initial_rank == 0){
+            printf(" __          __    _                                _           __  __  _____  _____ \n");
+            printf(" \\ \\        / /   | |                              | |         |  \\/  ||  __ \\|_   _|\n");
+            printf("  \\ \\  /\\  / /___ | |  ___  ___   _ __ ___    ___  | |_  ___   | \\  / || |__) | | |  \n");
+            printf("   \\ \\/  \\/ // _ \\| | / __|/ _ \\ | '_ ` _ \\  / _ \\ | __|/ _ \\  | |\\/| ||  ___/  | |  \n");
+            printf("    \\  /\\  /|  __/| || (__| (_) || | | | | ||  __/ | |_| (_) | | |  | || |     _| |_ \n");
+            printf("     \\/  \\/  \\___||_| \\___|\\___/ |_| |_| |_| \\___|  \\__|\\___/  |_|  |_||_|    |_____|\n\n\n");
+            printf("Illegal number of arguments.\n\n");
+            printf("USAGE:\n\n");
+            printf("    make run_mpi ./path/to/data [option]\n\n");
+            printf("    Options:\n");
+            printf("        v: Verbose. Print welcome message and other information\n");
+            printf("        nv: Non verbose. Print only required information\n");
+            printf("        help: Display help message\n\n\n");
+            MPI_Finalize();
+            exit(0);
+
+        } else {
+            MPI_Finalize();
+            exit(0);
+        }
+
+    } else {
+        // Error message don't know arguments
+        if (strcmp(argv[2], "v") != 0 && strcmp(argv[2], "nv") != 0 && strcmp(argv[2], "help") != 0){
+            if (info.initial_rank == 0){
+                printf(" __          __    _                                _           __  __  _____  _____ \n");
+                printf(" \\ \\        / /   | |                              | |         |  \\/  ||  __ \\|_   _|\n");
+                printf("  \\ \\  /\\  / /___ | |  ___  ___   _ __ ___    ___  | |_  ___   | \\  / || |__) | | |  \n");
+                printf("   \\ \\/  \\/ // _ \\| | / __|/ _ \\ | '_ ` _ \\  / _ \\ | __|/ _ \\  | |\\/| ||  ___/  | |  \n");
+                printf("    \\  /\\  /|  __/| || (__| (_) || | | | | ||  __/ | |_| (_) | | |  | || |     _| |_ \n");
+                printf("     \\/  \\/  \\___||_| \\___|\\___/ |_| |_| |_| \\___|  \\__|\\___/  |_|  |_||_|    |_____|\n\n\n");
+                printf("Can not understand %s argument\n\n", argv[2]);
+                printf("USAGE:\n\n");
+                printf("    make run_mpi ./path/to/data [option]\n\n");
+                printf("    Options:\n");
+                printf("        v: Verbose. Print welcome message and other information\n");
+                printf("        nv: Non verbose. Print only required information\n");
+                printf("        help: Display help message\n\n\n");
+                MPI_Finalize();
+                exit(0);
+
+            } else {
+                MPI_Finalize();
+                exit(0);
+            }
+
+        } else if(strcmp(argv[2], "help") == 0){  // Welcome message only runs on verbose
+            if (info.initial_rank == 0){
+                printf(" __          __    _                                _           __  __  _____  _____   _    _        _        \n");
+                printf(" \\ \\        / /   | |                              | |         |  \\/  ||  __ \\|_   _| | |  | |      | |       \n");
+                printf("  \\ \\  /\\  / /___ | |  ___  ___   _ __ ___    ___  | |_  ___   | \\  / || |__) | | |   | |__| |  ___ | | _ __  \n");
+                printf("   \\ \\/  \\/ // _ \\| | / __|/ _ \\ | '_ ` _ \\  / _ \\ | __|/ _ \\  | |\\/| ||  ___/  | |   |  __  | / _ \\| || '_ \\ \n");
+                printf("    \\  /\\  /|  __/| || (__| (_) || | | | | ||  __/ | |_| (_) | | |  | || |     _| |_  | |  | ||  __/| || |_) |\n");
+                printf("     \\/  \\/  \\___||_| \\___|\\___/ |_| |_| |_| \\___|  \\__|\\___/  |_|  |_||_|    |_____| |_|  |_| \\___||_|| .__/ \n");
+                printf("                                                                                                       | |    \n");
+                printf("                                                                                                       |_|    \n");
+
+                printf("USAGE:\n\n");
+                printf("    make run_mpi ./path/to/data [option]\n\n");
+                printf("    Options:\n");
+                printf("        v: Verbose. Print welcome message and other information\n");
+                printf("        nv: Non verbose. Print only required information\n");
+                printf("        help: Display help message\n\n\n");
+                MPI_Finalize();
+                exit(0);
+
+            } else {
+                MPI_Finalize();
+                exit(0);
+            }
+
+        } else if(strcmp(argv[2], "v") == 0 && info.initial_rank == 0){  // Welcome message only runs on verbose
+            printf(" __          __    _                                _           __  __  _____  _____ \n");
+            printf(" \\ \\        / /   | |                              | |         |  \\/  ||  __ \\|_   _|\n");
+            printf("  \\ \\  /\\  / /___ | |  ___  ___   _ __ ___    ___  | |_  ___   | \\  / || |__) | | |  \n");
+            printf("   \\ \\/  \\/ // _ \\| | / __|/ _ \\ | '_ ` _ \\  / _ \\ | __|/ _ \\  | |\\/| ||  ___/  | |  \n");
+            printf("    \\  /\\  /|  __/| || (__| (_) || | | | | ||  __/ | |_| (_) | | |  | || |     _| |_ \n");
+            printf("     \\/  \\/  \\___||_| \\___|\\___/ |_| |_| |_| \\___|  \\__|\\___/  |_|  |_||_|    |_____|\n\n\n");
+
+
+            printf("IMPORTANT NOTES:\n\n");
+            printf("    1. The whole project is designed to work with datasets that the number of points they\n");
+            printf("       have is a power of 2. You don't have to do anything yourself but keep in mind that\n");
+            printf("       if you run the program it will read the power of 2 points that is the closest to the\n");
+            printf("       number of points in the binary file.\n\n");
+            printf("    2. The number of process must also be a power of 2. This you must ensure yourself from\n");
+            printf("       the host file. If you don't change anything the default number of processes is 8.\n\n\n\n\n");
+        }
+    }
+}
 
 /**
  * The main function of the program
  * @param argc The number of the cmd arguments
  * @param argv The cmd arguments. The function takes only one argument the path to the binary data file.
- * @return
  */
 int main(int argc, char **argv) {
-
-    // check for the command line arguments
-    if (argc != 2){
-        printf("Illegal number of arguments. The function takes one argument: The path to the binary data file. Exiting...\n");
-        return -1;
-    }
 
     // Initialize the MPI communication
     MPI_Init(&argc, &argv);
@@ -216,8 +344,11 @@ int main(int argc, char **argv) {
     info.initial_rank = info.world_rank;  // Just for testing
     info.initial_size = info.world_size; // Just for testing
 
+    // Check the cmd arguments
+    checkArguments(argc, argv, info);
+
     // Read data from the binary file
-    info.points = readFromFile(
+    info.points = readFromFile(  // MEMORY
             argv[1],
             info.world_rank,
             info.world_size,
@@ -233,7 +364,7 @@ int main(int argc, char **argv) {
 
     // Create the pivot for every process. The pivot remains constant for the execution of the program, so it is only
     // selected once
-    info.pivot.coordinates = (double *) malloc(info.pointsDimension * sizeof(double));
+    info.pivot.coordinates = (double *) malloc(info.pointsDimension * sizeof(double));  // MEMORY
 
 
     // If this is the master process...
@@ -277,13 +408,16 @@ int main(int argc, char **argv) {
     if (info.initial_rank == 0){
         end = MPI_Wtime();
 
-        printf("Time for execution: %.6f\n", end - start);
+        printf("\nTime for execution: %.6f\n", end - start);
 
         // Start the timer for testing time
         start = MPI_Wtime();
 
-        printf("\n\nTest results: \n");
+        printf("\n    Validation results:\n\n");
     }
+
+    // Wait here for all the processes to finish before time measurement
+    MPI_Barrier(MPI_COMM_WORLD);
 
     // Test the final result
     testOverAllResults(&info);
@@ -294,7 +428,7 @@ int main(int argc, char **argv) {
     if (info.initial_rank == 0){
         end = MPI_Wtime();
 
-        printf("Time for Test: %.6f\n", end - start);
+        printf("\n    Time for validation: %.6f\n\n", end - start);
     }
 
     // Deallocate any allocated memory
@@ -302,6 +436,8 @@ int main(int argc, char **argv) {
         free(info.points[i].coordinates);
     }
     free(info.points);
+    free(info.pivot.coordinates);
+
 
     // Finalize the MPI environment.
     MPI_Finalize();
