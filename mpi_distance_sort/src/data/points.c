@@ -47,17 +47,28 @@ void swap(double* a, double* b)
  * @return The index of the pivot
  */
 int Partition(double *distVector, int start, int end) {
-    double pivotVal = distVector[end];
-    int i = start, j = start;
 
+    // Get the value of the pivot. The pivot has previously been moved to the end of the array
+    double pivotVal = distVector[end];
+
+    int i = start, j = start;  // i and j point to the starting index of the section of the array we work on
+
+    // For every point...
     while (j < end) {
+        // ... if it is smaller that the pivot...
         if (distVector[j] < pivotVal) {
+
+            // ...swap the point with the most left bigger than the pivot point in the array
             swap(&distVector[i], &distVector[j]);
             i++;
         }
         j++;
     }
+
+    // Finally put the pivot in its place
     swap(&distVector[i], &distVector[end]);
+
+    // Return the index of the pivot
     return i;
 }
 
@@ -72,7 +83,11 @@ int Partition(double *distVector, int start, int end) {
 int randomPartition(double *distVector, int start, int end) {
     int n = end - start + 1;
     int pivot = rand() % n;
+
+    // put the pivot to the end of the section of the array we are working on
     swap(&distVector[start + pivot], &distVector[end]);
+
+    // Return the correct index of the pivot
     return Partition(distVector, start, end);
 }
 
@@ -139,5 +154,6 @@ double findMedianValue(double *distanceVector, int numberOfPoints){
         ans = (a + b) / 2;
     }
 
+    // Return the final value of the median
     return ans;
 }
