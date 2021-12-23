@@ -22,6 +22,9 @@
   - [3.1. Make](#31-make)
   - [3.2. OpenMPI](#32-openmpi)
 - [4. Compile and run](#4-compile-and-run)
+  - [4.1. Run individual files](#41-run-individual-files)
+  - [4.2. Run multiple files at once](#42-run-multiple-files-at-once)
+  - [4.3. Create random data](#43-create-random-data)
 
 ## 1. About this project
 
@@ -53,13 +56,65 @@ The version of openMPI used in this project is `(Open MPI) 4.1.2`. You can downl
 
 ## 4. Compile and run
 
-To build the application `cd` to the [root](mpi_distance_sort) directory of the project. There you will find the [Makefile](mpi_distance_sort/Makefile). The Makefile provides all the required commands to build and run the application on your local machine. The targets provided from the Makefile are:
+### 4.1. Run individual files
 
-1. `make build_mpi`: Compiles all the files to a single executable. The produced binary is saved in the `build` directory
-2. `make run_mpi data_file=path/to/binary/data`: Runs the application with `mpirun`. The `data_file=...` argument is required. 
-3. `make debug_mpi`: Runs the application with `mpi_run` and `valgrind`.
-4. `make clean`: Cleans the `build` directory.
-5. `make create_datafile`: Creates a random binary data file with `dimension` `20` and `8388608` points. The file is saved in the `datasets` directory with name `data.bin`.
+To run individual data files a [Makefile](mpi_distance_sort/Makefile) is provided. To build and run the application `cd` to the [root](mpi_distance_sort) directory of the project and follow these steps:
 
+1. `make clean`: Clean the `build` directory.
+2. `make build_mpi`: Build the binary executable.
+3. `make run_mpi args`: Run the executable with provided arguments.
+      
+      ```
+      Mandatory arguments:
 
+        argv[1]: The path to the data file
+        argv[2]: One of the following:
+          v: Verbose output for the executable
+          nv: Non verbose output for the executable (Minimum information are printed to the console)  
+          help: Displays help message and exits
+      ```
 To adjust the number of hosts edit the slots in the [hostfile](mpi_distance_sort/hostfile).
+
+Examples:
+      
+`make run_mpi datasets/data.bin v  # This will run the program with verbose output`
+
+`make run_mpi help  # This will display help message and exit`
+      
+ 
+### 4.2. Run multiple files at once
+
+To run multiple files at once use the [`benchmarks.sh`](mpi_distance_sort/benchmarks.sh). Give `execute` rights to the script file with `chmod +x benchmarks.sh` and run the script with `./benchmarks.sh`.
+
+The script accepts certain arguments described bellow:
+
+```
+Usage ./benchmarks.sh [OPTION]...
+
+Runs a series of tests with the MPI executable and the data files found in the directory specified"
+    
+OPTIONS:
+    -d {directory}              The directory containing the datasets. This is mandatory and the
+                                data files must have .bin extension.
+
+    -v true || false || one     Verbose output for the executable. Values:
+                                    true: All runs are verbose 
+                                    false: All runs are non verbose
+                                    one: Only the first run is verbose (Default if not provided)
+
+    -n {processes}              The number of processes. Must be a power of 2!! Default is 8.
+
+    -h                          Help message for the executable
+
+    -u                          Usage for this script
+
+Example usage:
+    ./benchmarks.sh -v -d ./datasets
+
+```
+
+### 4.3. Create random data
+
+To to create random data files a [Makefile](mpi_distance_sort/Makefile) is provided. To build and run the application `cd` to the [root](mpi_distance_sort) directory of the project and follow these steps:
+
+1. `make create_datafile`: Creates a random binary data file with `dimension` `20` and `8388608` points. The file is saved in the `datasets` directory with name `data.bin`. This file is quite big (1.3GB) so you may want to adjust this in the `Makefile`. Simply change the numbers in the `create_datafile` target (line 76). The first argument is the dimension of the space and the second is the number of points.

@@ -69,6 +69,7 @@ debug_mpi:
 
 
 create_datafile:
+	@mkdir -p datasets
 	@echo
 	@echo "$(GREEN)Creating data file with d=20 n=8388608 path=./datasets/data.bin$(NC)"
 	@$(CC) -o $(BUILD_DIR)/create_sample_points.out $(SRC_DIR)/tools/create_sample_points.c
