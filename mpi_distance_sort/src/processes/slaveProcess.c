@@ -1,48 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <mpi.h>
 #include <pthread.h>
-#include "points.h"
-#include "masterProcess.h"
 
+#include "points.h"
+#include "threads.h"
 #include "slaveProcess.h"
 
 #define THREAD_NUM 4  // The number of threads for the distance calculation
 
-/**
- * Arguments for the runnable function that calculates the distances in parallel to save time
- */
-typedef struct pthreadArgs {
-    Info *info;  // Reference to the info struct of the process
-    double *distPtr;  // Reference to the distance vector of the process
-
-    int startIndex;  // The starting index of the distance vector for each thread
-    int endIndex;  // The ending index of the distance vector for each thread
-} PthreadArgsMaster;
-
-/**
- * The runnable function for parallel computation of he distances
- * @param args The arguments struct for every thread
- * @return Nothing
- */
-void *distanceRunnable(void *args){
-
-    // Type cast the arguments
-    PthreadArgsMaster *arguments = (PthreadArgsMaster *) args;
-
-    // This is the reference to the processes info struct. This variable is only here to make the code more readable.
-    Info *info = (*arguments).info;
-
-    // Start calculating the distances from the pivot for all the points
-    for (int i = (*arguments).startIndex; i <= (*arguments).endIndex; ++i) {
-
-        (*arguments).distPtr[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
-        info->points[i].distance = (*arguments).distPtr[i];
-    }
-
-    pthread_exit(NULL);
-}
 
 /**
  * This is the function that all processes, except the master, run. In this function all the computations and
@@ -55,26 +21,25 @@ void *distanceRunnable(void *args){
  * @param communicator The MPI communicator.
  */
 void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_Comm communicator){
-
-//    printf("\n\nRank: %d\n", info->world_rank);
-//    for (int i = 0; i < info->pointsPerProcess; ++i) {
-//        printf("  Point: %d\n", i);
-//        for (int j = 0; j < info->pointsDimension; ++j) {
-//            printf("    %f ", info->points[i].coordinates[j]);
-//        }
-//        printf("\n");
-//    }
-
+    // Debugging prints
+    /*printf("\n\nRank: %d\n", info->world_rank);
+    for (int i = 0; i < info->pointsPerProcess; ++i) {
+        printf("  Point: %d\n", i);
+        for (int j = 0; j < info->pointsDimension; ++j) {
+            printf("    %f ", info->points[i].coordinates[j]);
+        }
+        printf("\n");
+    }*/
 
     // Memory allocation for the distance vector
     double *distVector = (double*) malloc(info->pointsPerProcess * sizeof (double));  // MEMORY
 
     // How many distances every thread will compute. The number of pointsPerProcess and processes are all powers of 2 so
     // the division is always an integer and there are no points left unprocessed
-    int blockSize = info->pointsPerProcess / THREAD_NUM;
+    int grainSize = info->pointsPerProcess / THREAD_NUM;
 
     // If the points per process are not many it is actually faster to calculate the distances serially
-    if (blockSize <= 128){
+    if (grainSize <= 1024){
         // Start calculating the distances from the pivot for all the points
         for (int i = 0; i < info->pointsPerProcess; ++i) {
             distVector[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
@@ -89,15 +54,15 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
         pthread_attr_init(&pthread_custom_attr);
 
         pthread_t threads[THREAD_NUM];  // All the thread ids
-        PthreadArgsMaster arguments[THREAD_NUM];  // The structs for each thread
+        PthreadArgs arguments[THREAD_NUM];  // The structs for each thread
 
         for (int i = 0; i < THREAD_NUM; ++i) {
 
             // Initialize the arguments for every process
             arguments[i].info = info;
             arguments[i].distPtr = distVector;
-            arguments[i].startIndex = blockSize * i;
-            arguments[i].endIndex = blockSize * i + blockSize - 1;
+            arguments[i].startIndex = grainSize * i;  // assign a specific range of points to the thread
+            arguments[i].endIndex = grainSize * i + grainSize - 1;  // assign a specific range of points to the thread
 
             // Create the threads
             pthread_create(&threads[i], &pthread_custom_attr, distanceRunnable, (void *) (arguments + i));
@@ -109,16 +74,13 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
         }
     }
 
-
-
-//    printf("Rank: %d\n", info->world_rank);
-//    for (int indexI = 0; indexI < info->pointsPerProcess; ++indexI) {
-//        printf("Distance: %f  ", distVector[indexI]);
-//    }
-//    printf("\n");
-//    printf("\n");
-
-
+    // Debugging prints
+    /*printf("Rank: %d\n", info->world_rank);
+    for (int indexI = 0; indexI < info->pointsPerProcess; ++indexI) {
+        printf("Distance: %f  ", distVector[indexI]);
+    }
+    printf("\n");
+    printf("\n");*/
 
     // Send all the distances to the master process
     MPI_Send(
@@ -148,9 +110,13 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
     int indexI = 0;
     int indexJ = 0;
 
+    // For all the points...
     while (indexJ < info->pointsPerProcess){
+
+        // ...if the distance of the point is less that the median....
         if (info->points[indexJ].distance < median) {
 
+            // ...swap the point with the most left bigger than the median point
             Point pnt = info->points[indexJ];
             info->points[indexJ] = info->points[indexI];
             info->points[indexI] = pnt;
@@ -225,7 +191,6 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
 
     // There is no need to wait for the "send" above because we enter a "receive" that the master process will initiate
     // only if the above "send" is completed so we can free the request as well
-//    MPI_Request_free(&request);
 
     // Receive the exchanges vector
     MPI_Status status;
@@ -301,10 +266,12 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
                 requests + 2 * k + 1
         );
 
-        // Increment the offset by the number of coordinates written and read
+        // Increment the offset by the number of coordinates sent and received
         offset += exchanges[k * 2 + 2] * info->pointsDimension;
     }
 
+    // If the process had points to exchange we wait for the Isend and Ircv to finish. If it did not have any points to
+    // exchange the request objects are not initialized so we must not wait frt them.
     if (exchanges[0] > 0){
         // Wait for all the requests to complete
         for (int k = 0; k < exchanges[0] * 2; ++k) {
@@ -313,7 +280,6 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
     }
 
     // Update the points array with the new points received
-
     // If this is a bottom process update the larger points
     if (info->world_rank < (max_rank - min_rank + 1) / 2) {
         for (int k = indexI; k < indexI + pointsToSend; ++k) {
@@ -330,23 +296,21 @@ void slaveProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_C
         }
     }
 
+    // Debugging prints
+    /*printf("\n\nRank: %d after\n", info->initial_rank);
+    for (int i = 0; i < info->pointsPerProcess; ++i) {
+        printf("  Point: %d, Distance: %.10f\n", i, info->points[i].distance);
+        for (int j = 0; j < info->pointsDimension; ++j) {
+            printf("    %f ", info->points[i].coordinates[j]);
+        }
+        printf("\n");
+    }*/
 
-
-//    printf("\n\nRank: %d after\n", info->initial_rank);
-//    for (int i = 0; i < info->pointsPerProcess; ++i) {
-//        printf("  Point: %d, Distance: %.10f\n", i, info->points[i].distance);
-//        for (int j = 0; j < info->pointsDimension; ++j) {
-//            printf("    %f ", info->points[i].coordinates[j]);
-//        }
-//        printf("\n");
-//    }
-
-
-    // Free memory
+    // Free memory. Because this function will be called inside a recursive function it is important to free the memory
+    // otherwise if the recursion depth is big enough we could potentially run out of memory.
     free(distVector);
     free(sendVector);
     free(exchanges);
     free(requests);
     free(recVector);
-
 }

@@ -1,47 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <mpi.h>
 #include <pthread.h>
 
 #include "points.h"
 #include "masterProcess.h"
+#include "threads.h"
 
 #define THREAD_NUM 4  // The number of threads for the distance calculation
 
-/**
- * Arguments for the runnable function that calculates the distances in parallel to save time
- */
-typedef struct pthreadArgsMaster {
-    Info *info;  // Reference to the info struct of the process
-    double *distPtr;  // Reference to the distance vector of the process
-
-    int startIndex;  // The starting index of the distance vector for each thread
-    int endIndex;  // The ending index of the distance vector for each thread
-} PthreadArgsMaster;
-
-/**
- * The runnable function for parallel computation of he distances
- * @param args The arguments struct for every thread
- * @return Nothing
- */
-void *distanceRunnableMaster(void *args){
-
-    // Type cast the arguments
-    PthreadArgsMaster *arguments = (PthreadArgsMaster *) args;
-
-    // This is the reference to the processes info struct. This variable is only here to make the code more readable.
-    Info *info = (*arguments).info;
-
-    // Start calculating the distances from the pivot for all the points
-    for (int i = (*arguments).startIndex; i <= (*arguments).endIndex; ++i) {
-
-        (*arguments).distPtr[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
-        info->points[i].distance = (*arguments).distPtr[i];
-    }
-
-    pthread_exit(NULL);
-}
 
 /**
  * This is the function of the master processes. Here the median is calculated and in general all the processes
@@ -61,19 +28,17 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
     MPI_Request *requests;
     requests = (MPI_Request *) malloc((max_rank - min_rank) * sizeof (MPI_Request));  // MEMORY
 
+    // Debugging prints
+    /*printf("\n\nRank: %d\n", info->world_rank);
+    for (int i = 0; i < info->pointsPerProcess; ++i) {
+        printf("  Point: %d\n", i);
 
+        for (int j = 0; j < info->pointsDimension; ++j) {
+            printf("    %f ", info->points[i].coordinates[j]);
+        }
 
-//    printf("\n\nRank: %d\n", info->world_rank);
-//    for (int i = 0; i < info->pointsPerProcess; ++i) {
-//        printf("  Point: %d\n", i);
-//
-//        for (int j = 0; j < info->pointsDimension; ++j) {
-//            printf("    %f ", info->points[i].coordinates[j]);
-//        }
-//
-//        printf("\n");
-//    }
-
+        printf("\n");
+    }*/
 
     // Start receiving the distances from all the processes. The receives start before the calculation of the
     // distances so if some processes finish before the master process the info send can begin
@@ -93,10 +58,10 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
 
     // How many distances every thread will compute. The number of pointsPerProcess and processes are all powers of 2 so
     // the division is always an integer and there are no points left unprocessed
-    int blockSize = info->pointsPerProcess / THREAD_NUM;
+    int grainSize = info->pointsPerProcess / THREAD_NUM;
 
     // If the points per process are not many it is actually faster to calculate the distances serially
-    if (blockSize <= 128){
+    if (grainSize <= 1024){
         // Start calculating the distances from the pivot for all the points
         for (int i = 0; i < info->pointsPerProcess; ++i) {
             distVector[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
@@ -111,18 +76,18 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
         pthread_attr_init(&pthread_custom_attr);
 
         pthread_t threads[THREAD_NUM];  // All the thread ids
-        PthreadArgsMaster arguments[THREAD_NUM];  // The structs for each thread
+        PthreadArgs arguments[THREAD_NUM];  // The structs for each thread
 
         for (int i = 0; i < THREAD_NUM; ++i) {
 
             // Initialize the arguments for every process
             arguments[i].info = info;
             arguments[i].distPtr = distVector;
-            arguments[i].startIndex = blockSize * i;
-            arguments[i].endIndex = blockSize * i + blockSize - 1;
+            arguments[i].startIndex = grainSize * i;
+            arguments[i].endIndex = grainSize * i + grainSize - 1;
 
             // Create the threads
-            pthread_create(&threads[i], &pthread_custom_attr, distanceRunnableMaster, (void *) (arguments + i));
+            pthread_create(&threads[i], &pthread_custom_attr, distanceRunnable, (void *) (arguments + i));
         }
 
         // Join all the threads. This statement waits for all the threads to finish execution
@@ -131,58 +96,49 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
         }
     }
 
-//    // Start calculating the distances from the pivot for all the points
-//    for (int i = 0; i < info->pointsPerProcess; ++i) {
-//        // The first points per process instances in the distVector are those of the master process
-//        distVector[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
-//
-//        // Update the distance for every point
-//        info->points[i].distance = distVector[i];
-//    }
+    // Debugging prints
+    /*// Start calculating the distances from the pivot for all the points
+    for (int i = 0; i < info->pointsPerProcess; ++i) {
+        // The first points per process instances in the distVector are those of the master process
+        distVector[i] = findDistance(&info->pivot, &info->points[i], info->pointsDimension);
 
+        // Update the distance for every point
+        info->points[i].distance = distVector[i];
+    }
 
-
-//    printf("\n\nRank: %d distance: ", info->world_rank);
-//    for (int i = 0; i < info->pointsPerProcess; ++i) {
-//        printf("%f, ", distVector[i]);
-//    }
-//    printf("\n");
-
+    printf("\n\nRank: %d distance: ", info->world_rank);
+    for (int i = 0; i < info->pointsPerProcess; ++i) {
+        printf("%f, ", distVector[i]);
+    }
+    printf("\n");*/
 
     // Wait for all the distances to be received
     for (int i = 0; i < max_rank - min_rank; ++i) {
         MPI_Wait(requests + i, MPI_STATUS_IGNORE);
     }
 
+    // Debugging prints
+    /*printf("\n\nPivot: ");
+    for (int i = 0; i < info->pointsDimension; ++i) {
+        printf("%f ", info->pivot.coordinates[i]);
+    }
+    printf("\n");
+    printf("\n");
 
-
-    // Debug prints
-//    printf("\n\nPivot: ");
-//    for (int i = 0; i < info->pointsDimension; ++i) {
-//        printf("%f ", info->pivot.coordinates[i]);
-//    }
-//    printf("\n");
-//    printf("\n");
-//
-//    for (int i = 0; i <= max_rank; ++i) {
-//        printf("Distance table Rank %d: ", i);
-//        for (int j = 0; j < info->pointsPerProcess; ++j) {
-//            printf("%f ", distVector[i * info->pointsPerProcess + j]);
-//        }
-//        printf("\n");
-//    }
-
-
+    for (int i = 0; i <= max_rank; ++i) {
+        printf("Distance table Rank %d: ", i);
+        for (int j = 0; j < info->pointsPerProcess; ++j) {
+            printf("%f ", distVector[i * info->pointsPerProcess + j]);
+        }
+        printf("\n");
+    }*/
 
     // Calculate the median value and send it back to the other processes of the group
     double median = findMedianValue(distVector, info->pointsPerProcess * info->world_size);
     info->median = median;
 
-
-
-//    printf("\n\nMedian: %f\n", median);
-
-
+    // Debugging prints
+    //printf("\n\nMedian: %f\n", median);
 
     // Broadcast the median to all the processes of the group
     MPI_Bcast(
@@ -220,9 +176,13 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
     int indexI = 0;
     int indexJ = 0;
 
+    // For all the points...
     while (indexJ < info->pointsPerProcess){
+
+        // ...if the distance of the point is less that the median...
         if (info->points[indexJ].distance < median) {
 
+            // ...swap the point with the most left bigger than the median point
             Point pnt = info->points[indexJ];
             info->points[indexJ] = info->points[indexI];
             info->points[indexI] = pnt;
@@ -235,16 +195,13 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
     // This is the number of points the master process wants to send
     pointsToSend[0] = info->pointsPerProcess - indexI;
 
-
-
-//    printf("\n\nDistance after partition: ");
-//    for (int i = 0; i < info->pointsPerProcess * (max_rank - min_rank + 1); ++i) {
-//        printf("%f, ", distVector[i]);
-//    }
-//    printf("\n");
-//    printf("\n");
-
-
+    // Debugging prints
+    /*printf("\n\nDistance after partition: ");
+    for (int i = 0; i < info->pointsPerProcess * (max_rank - min_rank + 1); ++i) {
+        printf("%f, ", distVector[i]);
+    }
+    printf("\n");
+    printf("\n");*/
 
     // Create a "send" and a "receive" buffer. Those buffers may seem like a waist of memory but in reality they are the
     // reason that the "send" and "receive" process can happen simultaneously
@@ -272,17 +229,14 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
     }
 
 
-
-//    for (int i = 0; i < max_rank - min_rank + 1; ++i) {
-//        printf("Process %d wants to send %d points\n", i, pointsToSend[i]);
-//    }
-//    printf("\n");
-//    printf("\n");
-
-
+    // Debugging prints
+    /*for (int i = 0; i < max_rank - min_rank + 1; ++i) {
+        printf("Process %d wants to send %d points\n", i, pointsToSend[i]);
+    }
+    printf("\n");
+    printf("\n");*/
 
     // Solve he exchanges problem
-
     /* This array holds the exchanges for every process the information is stored as follows:
      *
      *   exchanges[i]: This is an array of pointsToSend info for the ith process. There is one for every process.
@@ -400,19 +354,16 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
         }
     }
 
-
-
-//    printf("\n");
-//    printf("\n");
-//    for (int k = 0; k <= max_rank - min_rank; ++k) {
-//        printf("Rank %d wants to send ", k);
-//        for (int l = 1; l <= exchanges[k][0] * 2; l += 2) {
-//            printf("Rank %d, %d element(s), ", exchanges[k][l], exchanges[k][l + 1]);
-//        }
-//        printf("\n");
-//    }
-
-
+    // Debugging prints
+    /*printf("\n");
+    printf("\n");
+    for (int k = 0; k <= max_rank - min_rank; ++k) {
+        printf("Rank %d wants to send ", k);
+        for (int l = 1; l <= exchanges[k][0] * 2; l += 2) {
+            printf("Rank %d, %d element(s), ", exchanges[k][l], exchanges[k][l + 1]);
+        }
+        printf("\n");
+    }*/
 
     // Clear all the requests
     free(requests);  // MEMORY free
@@ -492,18 +443,15 @@ void masterProcess(int master_rank, int min_rank, int max_rank, Info *info, MPI_
         }
     }
 
-
-
-//    printf("\n\nRank: %d after\n", info->initial_rank);
-//    for (int i = 0; i < info->pointsPerProcess; ++i) {
-//        printf("  Point: %d, Distance: %.10f\n", i, info->points[i].distance);
-//        for (int j = 0; j < info->pointsDimension; ++j) {
-//            printf("    %f ", info->points[i].coordinates[j]);
-//        }
-//        printf("\n");
-//    }
-
-
+    // Debugging prints
+    /*printf("\n\nRank: %d after\n", info->initial_rank);
+    for (int i = 0; i < info->pointsPerProcess; ++i) {
+        printf("  Point: %d, Distance: %.10f\n", i, info->points[i].distance);
+        for (int j = 0; j < info->pointsDimension; ++j) {
+            printf("    %f ", info->points[i].coordinates[j]);
+        }
+        printf("\n");
+    }*/
 
     // free memory
     free(distVector);
