@@ -117,4 +117,4 @@ Example usage:
 
 To to create random data files a [Makefile](mpi_distance_sort/Makefile) is provided. To build and run the application `cd` to the [root](mpi_distance_sort) directory of the project and follow these steps:
 
-1. `make create_datafile`: Creates a random binary data file with `dimension` `20` and `8388608` points. The file is saved in the `datasets` directory with name `data.bin`. This file is quite big (1.3GB) so you may want to adjust this in the `Makefile`. Simply change the numbers in the `create_datafile` target (line 76). The first argument is the dimension of the space and the second is the number of points.
+1. `make create_datafile`: Creates a random binary data file with `dimension` `20` and `8388608` points. The file is saved in the `datasets` directory with name `data.bin`. This file is quite big (1.3GB) so you may want to adjust this in the `Makefile`. Simply change the numbers in the [`Makefile`](mpi_distance_sort/Makefile#L76). The first argument is the dimension of the space and the second is the number of points.
