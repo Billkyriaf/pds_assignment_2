@@ -11,8 +11,6 @@
     Winter Semester 2021 - 2022
     <br />
     <br />
-    <br />
-    <br />
   </p>
 </div>
 
